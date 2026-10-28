@@ -1,0 +1,13 @@
+# dvs11 mutation results — 2026-10-29 00:02:26 +0200
+# kill command: bash -c nim c -r --hints:off --warnings:off --passC:-w --threads:on --nimcache:$BUILD_DIR/nc -o:$BUILD_DIR/trender tests/trender.nim
+
+KILLED   R1       26.2s  narration placed at an absolute second
+           |   [OK] the Playwright flavour: real video, narrated on the same step
+           |   [OK] a run that fails renders nothing and reports the failing step
+           | Error: execution of an external program failed: '$BUILD_DIR/trender'
+KILLED   R2       22.7s  a render continuing past a failed step
+           |     Unhandled exception: cannot open:  [IOError]
+           |   [FAILED] a run that fails renders nothing and reports the failing step
+           | Error: execution of an external program failed: '$BUILD_DIR/trender'
+
+2/2 killed, 0 survived

@@ -101,8 +101,11 @@
                 shellcheck
                 # composition, narration and the editor's previews run ffmpeg
                 ffmpeg
-                # the scenario editor's page, driven in a real browser
+                # the scenario editor's page, driven in a real browser; the
+                # Playwright flavour's host
                 nodejs
+                # terminal casts rasterised through a pinned font
+                asciinema-agg
               ]
               # The Linux host TTS engine (`speech_synth` / the `espeak`
               # speech-synthesis provider run `espeak-ng -w <out> <text>`).
@@ -112,6 +115,8 @@
             PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
             PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
             DVS_PLAYWRIGHT_CORE = "${pkgs.playwright-driver}";
+            # the pinned font terminal flavours are rasterised through
+            DVS_STUDIO_FONT_DIR = "${pkgs.jetbrains-mono}/share/fonts/truetype";
             shellHook = ''
               ${ownRepoOnly installGitHooks}
               export FFMPEG_BIN=${pkgs.ffmpeg}/bin/ffmpeg

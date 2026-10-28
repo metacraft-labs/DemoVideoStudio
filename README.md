@@ -2,9 +2,10 @@
 
 Video editor for DemoVideoScript scenarios: edits timing and narration in abstract terms and renders narrated videos through any backend.
 
-> **Status:** scenario files are edited in scenario terms (`dvs-studio edit`); rendering
-> through a pack on a chosen backend comes next. The keyframe-script editor and render
-> pipeline moved here from GuiAssert, with their history.
+> **Status:** scenario files are edited in scenario terms (`dvs-studio edit`) and rendered
+> through a pack on a chosen backend (`dvs-studio render`); several flavours at once comes
+> next. The keyframe-script editor and render pipeline moved here from GuiAssert, with their
+> history.
 
 DemoVideoStudio edits a [DemoVideoScript](https://github.com/metacraft-labs/DemoVideoScript)
 scenario's timing and presentation — pacing, narration, captions, callouts, presenter
@@ -19,6 +20,7 @@ also available headless, for CI and documentation builds.
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
 | `scenario_doc`                             | a scenario file as the editor's document: edits written back as anchors, `dwell`, `lead-in`, pacing and locators, comments kept |
 | `scenario_editor`, `editor-web/scenario.*` | the scenario editor's HTTP surface and page, and target picking through a flavour's `hit`                                       |
+| `render`                                   | a render: the run on a flavour, narration, captions, callouts and the presenter placed on its step offsets, composition         |
 | `editor_backend`, `editor-web/`            | the timeline editor: an HTTP surface and its web UI, with a three-tier preview cache                                            |
 | `media`                                    | composition: ffmpeg filter graphs for captions, overlays and the presenter                                                      |
 | `speech_synthesis`, `speech_synth`         | narration, through provider plugins (macOS `say` built in)                                                                      |
@@ -58,18 +60,34 @@ scenario file as the format's own values, never a time, and an edit that would n
 refused. Clicking the preview picks the selected step's target: the role instance there,
 named by its semantic keys.
 
+## Rendering a scenario
+
+```sh
+build/bin/dvs-studio render scenarios/tour.yaml --pack pack/app.pack.yaml \
+  --backend "terminal=dvs-termassert-notes --serve" --virtual-timing --out build/tour.mp4
+```
+
+runs the scenario on the backend with recording on and composes the video: every
+narration, caption, callout and avatar keyframe is placed on the run's own step offsets, so
+the same scenario renders in step on every flavour. A terminal flavour (`--virtual-timing`)
+is recorded fast, timed at render and rasterised through a pinned font. A run that does not
+pass renders nothing; the command names the failing step, the run's `failure/` directory
+and the recording up to that step, and exits 1. `--json` prints the report.
+
 ## Developing
 
 The siblings in `.github/sibling-repos` are expected next to this checkout (or at
 `GUI_ASSERT_SRC`, `DVS_SRC`, `DVS_TERMASSERT_ROOT`, `TERM_ASSERT_SRC`, `NIM_PTY_SRC`,
-`NIM_LIBVTERM_SRC`, `TERM_ASSERT_CLIENT_SRC`). `just test` builds the terminal flavour from
-them; the dev shell provides node and Playwright's browsers for the page's suite.
+`NIM_LIBVTERM_SRC`, `TERM_ASSERT_CLIENT_SRC`, `DVS_PLAYWRIGHT_ROOT`). `just test` builds the
+terminal and Playwright flavours from them; the dev shell provides node, Playwright's
+browsers, `agg` and the pinned font.
 
 | Recipe                                         | Does                                                                                       |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `just test`                                    | every suite: the editor through HTTP and in a real browser, composition with a real ffmpeg |
 | `just build`                                   | `build/bin/dvs-studio`                                                                     |
 | `just mutate dvs10`                            | planted defects in the scenario editor must turn its suite red                             |
+| `just mutate dvs11`                            | planted defects in the render must turn its suite red                                      |
 | `just lint`                                    | `nim check` of every suite, `nixfmt`                                                       |
 | `python3 tests/mutation/run-dvs8-mutations.py` | planted defects in the moved code must turn the suites red                                 |
 | `python3 tests/mutation/run-dvs9-mutations.py` | planted defects in the plugin contract must turn its conformance suite red                 |

@@ -16,10 +16,11 @@ dvs_src := env_var_or_default("DVS_SRC", "../DemoVideoScript/src")
 dvs_root := dvs_src / ".."
 ta_root := env_var_or_default("DVS_TERMASSERT_ROOT", "../DemoVideoScript-TermAssert")
 ta_paths := "--path:" + ta_root + "/src --path:" + dvs_src + " --path:" + env_var_or_default("TERM_ASSERT_SRC", "../TermAssert/src") + " --path:" + env_var_or_default("NIM_PTY_SRC", "../nim-pty/src") + " --path:" + env_var_or_default("NIM_LIBVTERM_SRC", "../nim-libvterm/src") + " --path:" + env_var_or_default("TERM_ASSERT_CLIENT_SRC", "../TermAssertClient/src")
+pw_root := env_var_or_default("DVS_PLAYWRIGHT_ROOT", "../DemoVideoScript-Playwright")
 flavours := build_dir / "flavours"
-# the terminal flavour, for the suites that pick and run through it
-flavour_env := "DVS_TERMINAL_HOST=" + flavours + "/dvs-termassert-notes DVS_NOTES_TUI=" + flavours + "/notes-tui DVS_ROOT=" + dvs_root
-suites := "tscenario_editor tscenario_ui tplugin_contract tsilent_render tparser tmedia tspeech_synthesis ttalking_head temotive tdiscovery tartifact_project tartifact_pipeline teditor tdriver_browser tdriver_vscode tdriver_storyboard"
+# the flavours the suites pick, run and render through
+flavour_env := "DVS_TERMINAL_HOST=" + flavours + "/dvs-termassert-notes DVS_NOTES_TUI=" + flavours + "/notes-tui DVS_ROOT=" + dvs_root + " DVS_PLAYWRIGHT_ROOT=" + pw_root + " DVS_NOTES_WEB=" + flavours + "/web"
+suites := "tscenario_editor tscenario_ui trender tplugin_contract tsilent_render tparser tmedia tspeech_synthesis ttalking_head temotive tdiscovery tartifact_project tartifact_pipeline teditor tdriver_browser tdriver_vscode tdriver_storyboard"
 
 # The moved suites, unchanged in what they check: composition through a real
 # ffmpeg, the editor's HTTP surface, the artifact pipeline, the keyframe-script
@@ -31,12 +32,18 @@ test: build-flavours
       {{flavour_env}} nim c -r {{nim_flags}} --nimcache:{{build_dir}}/nimcache/$f -o:{{build_dir}}/test-bin/$f tests/$f.nim || exit 1; \
     done
 
-# The terminal flavour: DemoVideoScript-TermAssert's JSON-lines host with the
-# conformance binding, and the conformance application's terminal build.
+# The flavours: DemoVideoScript-TermAssert's JSON-lines host with the
+# conformance binding and the application's terminal build; and
+# DemoVideoScript-Playwright's host (node) with the application's web build.
+# The Playwright checkout gets the dev shell's playwright-core linked into its
+# node_modules, as its own `just setup` does.
 build-flavours:
-    @mkdir -p {{flavours}}
+    @mkdir -p {{flavours}}/web {{pw_root}}/node_modules
     nim c {{nim_flags}} --mm:orc -d:release {{ta_paths}} --nimcache:{{build_dir}}/nimcache/flavour-terminal -o:{{flavours}}/dvs-termassert-notes {{ta_root}}/conformance/dvs_termassert_notes.nim
     nim c {{nim_flags}} --mm:orc -d:release --nimcache:{{build_dir}}/nimcache/notes-tui -o:{{flavours}}/notes-tui {{dvs_root}}/conformance/app/notes_tui.nim
+    nim js --hints:off -d:release --nimcache:{{build_dir}}/nimcache/notes-web -o:{{flavours}}/web/notes_web.js {{dvs_root}}/conformance/app/notes_web.nim
+    cp {{dvs_root}}/conformance/app/web/index.html {{flavours}}/web/index.html
+    ln -sfn "$DVS_PLAYWRIGHT_CORE" {{pw_root}}/node_modules/playwright-core
 
 # `dvs-studio`, the command line.
 build:

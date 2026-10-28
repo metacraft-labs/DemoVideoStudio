@@ -1,9 +1,10 @@
 # Siblings cloned by setup-dev-env, each at an explicit commit: the studio is
 # built and tested against exactly these.
 GuiAssert=fbe1c80b1c290fe428c60f4e6a3a945978b3f97e  # GuiAssert@agents: the video-production modules moved out
-DemoVideoScript=ad5385999332f456ccc62bea873a8b0c52e863a8  # DemoVideoScript@agents: the scenario model, linter, runner, protocol
+DemoVideoScript=1a47933e19eb84e6f149b67f007dba9618ce3356  # DemoVideoScript@agents: callouts' targets in recorded runs
 DemoVideoScript-TermAssert=465573f9e6996045e2882d5be3c08f4281cda174  # DemoVideoScript-TermAssert@agents: the terminal flavour
 TermAssert=ad74669955a242bf8be2de2b6b5bf8b087294914  # TermAssert@agents: drags, and keys with modifiers
 nim-libvterm=a96c190d57f3c8593e6f6116cc06f08c2bde7c10  # nim-libvterm@agents: Screen.mouseTracking
 nim-pty=2845abd58dd2073475177301590c8b51aa5c9094  # nim-pty@agents
 TermAssertClient=57a620b1a88b36320c0fa70b26e4a5d5c295d24a  # TermAssertClient@agents
+DemoVideoScript-Playwright=faa5e0071d06ca2221274911020a8cb0fc777eec  # DemoVideoScript-Playwright@agents: where a recording begins in its video
