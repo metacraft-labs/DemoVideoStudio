@@ -10,7 +10,7 @@ alias t := test
 
 build_dir := env_var_or_default("BUILD_DIR", "build")
 nim_flags := "--hints:off --passC:-w"
-suites := "tplugin_contract tparser tmedia tspeech_synthesis ttalking_head temotive tdiscovery tartifact_project tartifact_pipeline teditor tdriver_browser tdriver_vscode tdriver_storyboard"
+suites := "tplugin_contract tsilent_render tparser tmedia tspeech_synthesis ttalking_head temotive tdiscovery tartifact_project tartifact_pipeline teditor tdriver_browser tdriver_vscode tdriver_storyboard"
 
 # The moved suites, unchanged in what they check: composition through a real
 # ffmpeg, the editor's HTTP surface, the artifact pipeline, the keyframe-script

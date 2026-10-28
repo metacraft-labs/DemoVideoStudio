@@ -755,3 +755,68 @@ proc composeVideoWithOverlay*(
       MediaCompositionError,
       "ffmpeg produced a zero-byte file at " & outputPath
     )
+
+# ---------------------------------------------------------------------------
+# Silent render — no narration, no presenter, no provider
+# ---------------------------------------------------------------------------
+#
+# Narration and the presenter overlay are optional stages: a render with
+# neither needs no speech or talking-head provider and no network. It is
+# the screencast on the canvas, with its captions, and a silent stereo
+# track so every render has the same stream layout.
+
+proc buildSilentComposeArgv*(
+    screencastPath, outputPath: string,
+    captions: seq[Caption],
+    opts: ComposeOptions = defaultComposeOptions(),
+    ffmpegBin: string = "ffmpeg"): seq[string] =
+  ## The ffmpeg argv for a silent render (see `composeSilentVideo`).
+  var video = &"[0:v]scale={opts.canvasWidth}:{opts.canvasHeight}:force_original_aspect_ratio=decrease," &
+              &"pad={opts.canvasWidth}:{opts.canvasHeight}:(ow-iw)/2:(oh-ih)/2,setsar=1"
+  for c in captions:
+    video.add "," & buildDrawtextFilter(c, opts)
+  video.add "[vout]"
+  result = @[
+    ffmpegBin, "-y", "-hide_banner", "-loglevel", "error",
+    "-i", ffmpegInputUrl(screencastPath),
+    "-f", "lavfi", "-t", "3600",
+    "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+    "-filter_complex", video,
+    "-map", "[vout]",
+    "-map", "1:a",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "192k",
+    "-movflags", "+faststart",
+    "-shortest",
+    outputPath
+  ]
+
+proc composeSilentVideo*(
+    screencastPath, outputPath: string,
+    captions: seq[Caption] = @[],
+    opts: ComposeOptions = defaultComposeOptions()) =
+  ## Render the screencast with its captions and no narration or
+  ## presenter: no provider is consulted and nothing leaves the host.
+  ## Raises `MediaCompositionError` on any failure.
+  if not fileExists(screencastPath):
+    raise newException(MediaCompositionError, "Screencast not found: " & screencastPath)
+  let parent = outputPath.parentDir()
+  if parent.len > 0 and not dirExists(parent):
+    createDir(parent)
+  let ffmpegBin = resolveFfmpegBinary()
+  let argv = buildSilentComposeArgv(screencastPath, outputPath, captions, opts, ffmpegBin)
+  let process = startProcess(
+    command = argv[0],
+    args = argv[1 .. ^1],
+    env = sanitizedEnvForFfmpeg(ffmpegBin),
+    options = {poStdErrToStdOut}
+  )
+  let output = process.outputStream().readAll()
+  let exitCode = process.waitForExit()
+  process.close()
+  if exitCode != 0:
+    raise newException(MediaCompositionError,
+      "ffmpeg exited with code " & $exitCode & ":\n" & output)
+  if not fileExists(outputPath) or getFileSize(outputPath) <= 0:
+    raise newException(MediaCompositionError,
+      "ffmpeg produced no usable file at " & outputPath)
