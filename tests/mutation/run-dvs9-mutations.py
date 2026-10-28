@@ -16,6 +16,8 @@ TC = "src/demo_video_studio/talking_head/core.nim"
 
 ARMS = [
     Arm("P1", SC, '  ctx.update(voiceId)\n', '  discard voiceId\n', "a cache key ignoring the voice"),
+    Arm("P1b", TC, "  ctx.update(narrationDigest)\n", "  discard narrationDigest\n",
+        "a talking-head cache key ignoring the narration"),
     Arm("P2", TC, "  result = r.providers[canonical]",
         "  for p in r.providers.values:\n    return p\n  result = r.providers[canonical]",
         "a registry returning the wrong provider"),

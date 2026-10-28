@@ -70,6 +70,17 @@ proc talkingHeadProblems*(p: TalkingHeadProvider; generate = false;
   let wav = dir / "narration.wav"
   silentWav(wav)
   let mp4 = dir / "out.mp4"
+  # the shared cache tells narrations, portraits and providers apart
+  let wav2 = dir / "narration2.wav"
+  silentWav(wav2, 2.0)
+  let face = dir / "face.png"
+  let face2 = dir / "face2.png"
+  writeFile(face, "portrait one")
+  writeFile(face2, "portrait two")
+  let key = cacheKeyFor(face, wav, p.name, "auto")
+  if key == cacheKeyFor(face, wav2, p.name, "auto"): result.add "the cache key ignores the narration"
+  if key == cacheKeyFor(face2, wav, p.name, "auto"): result.add "the cache key ignores the portrait"
+  if key == cacheKeyFor(face, wav, "kit-other", "auto"): result.add "the cache key ignores the provider"
   if not available:
     # an unavailable provider is refused by name, before it runs
     var ran = new bool

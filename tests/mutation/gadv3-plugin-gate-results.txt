@@ -1,0 +1,20 @@
+# gadv3 plugin gate — 2026-10-28 21:15:20 +0200
+
+KILLED   GuiAssert-Did           40.8s  a talking-head cache key ignoring the narration
+           | @["the cache key ignores the narration"]
+KILLED   GuiAssert-ElevenLabs    30.4s  a speech cache key ignoring the voice
+           | @["the cache key ignores the voice"]
+KILLED   GuiAssert-HeyGen        29.7s  a talking-head cache key ignoring the narration
+           | @["the cache key ignores the narration"]
+KILLED   GuiAssert-MuseTalk      38.2s  a talking-head cache key ignoring the narration
+           | @["the cache key ignores the narration"]
+KILLED   GuiAssert-SadTalker     20.9s  a talking-head cache key ignoring the narration
+           | @["the cache key ignores the narration"]
+KILLED   GuiAssert-Synthesia     61.0s  a talking-head cache key ignoring the narration
+           | @["the cache key ignores the narration"]
+KILLED   GuiAssert-Tavus         35.9s  a talking-head cache key ignoring the narration
+           | @["the cache key ignores the narration"]
+KILLED   GuiAssert-Wav2Lip       20.0s  a talking-head cache key ignoring the narration
+           | @["the cache key ignores the narration"]
+
+8/8 killed, 0 survived
