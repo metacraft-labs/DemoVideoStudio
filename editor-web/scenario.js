@@ -82,6 +82,7 @@ async function edit(body) {
     status(e.message, true);
   }
   await load();
+  await loadFlavours();
 }
 
 function renderTimeline() {
@@ -111,6 +112,7 @@ function renderTimeline() {
     el.textContent = `${s.path} ${s.kind}`;
     place(el, s.startMs, s.endMs);
     el.addEventListener("click", () => select(s.path));
+    el.addEventListener("dblclick", () => movePlayhead(s.path));
     $("actions").appendChild(el);
   }
   // the gap before each step: dragging it moves the step, as the previous
@@ -237,6 +239,122 @@ $("preview").addEventListener("click", async (e) => {
   await select(keep);
 });
 
+// --- flavours (§5): resident, switched without reading or running anything ---
+
+function mib(bytes) {
+  return `${(bytes / 1048576).toFixed(1)} MiB`;
+}
+
+async function flavourAction(op, name) {
+  status(`${op} ${name}…`);
+  try {
+    await api(`/api/${op}`, { flavour: name });
+    status(`${op} ${name}: done`);
+  } catch (e) {
+    status(e.message, true);
+  }
+  await loadFlavours();
+}
+
+async function showFrame() {
+  try {
+    const v = await api("/api/switch", {
+      flavour: $("shown-flavour").textContent,
+    });
+    $("shown-source").textContent =
+      `${v.showing}; session ${v.session}; step ${v.step} at ${Math.round(v.timeMs)} ms`;
+    $("frame").src =
+      `/api/frame?flavour=${encodeURIComponent(v.flavour)}&t=${Date.now()}`;
+  } catch (e) {
+    $("shown-source").textContent = e.message;
+  }
+}
+
+async function loadFlavours() {
+  const s = await api("/api/flavours");
+  const tbody = $("flavours").querySelector("tbody");
+  tbody.innerHTML = "";
+  for (const f of s.flavours) {
+    const tr = document.createElement("tr");
+    tr.dataset.flavour = f.name;
+    if (f.name === s.displayed) tr.className = "displayed";
+    const applies = f.applicable
+      ? "yes"
+      : `no: ${f.excludedBy.map((x) => `step ${x.step} needs ${x.capability}`).join("; ")}`;
+    const state = !f.loaded
+      ? "not loaded"
+      : f.suspended
+        ? "suspended"
+        : f.catchingUp
+          ? "catching up"
+          : f.error || `at step ${f.position + 1}`;
+    for (const text of [
+      f.name,
+      applies,
+      state,
+      f.loaded ? mib(f.memoryBytes) : "",
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    const td = document.createElement("td");
+    const actions = f.loaded
+      ? [
+          ["switch", "Show"],
+          ["unload", "Unload"],
+          [
+            f.suspended ? "resume" : "suspend",
+            f.suspended ? "Resume" : "Suspend",
+          ],
+        ]
+      : f.applicable
+        ? [["load", "Load"]]
+        : [];
+    for (const [op, label] of actions) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.dataset.op = op;
+      b.addEventListener("click", async () => {
+        if (op === "switch") {
+          $("shown-flavour").textContent = f.name;
+          await showFrame();
+          await loadFlavours();
+        } else {
+          await flavourAction(op, f.name);
+        }
+      });
+      td.appendChild(b);
+    }
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+  $("memory").textContent = `${mib(s.residentBytes)} of ${mib(s.budgetBytes)}`;
+  const notes = [];
+  if (s.overBudget)
+    notes.push(
+      `Over the memory budget: unload one of ${s.unloadOneOf.join(", ")}.`,
+    );
+  if (s.rerecord.length)
+    notes.push(`Re-record needed on: ${s.rerecord.join(", ")}.`);
+  $("banner").hidden = notes.length === 0;
+  $("banner").textContent = notes.join(" ");
+  if (s.displayed && $("shown-flavour").textContent !== s.displayed) {
+    $("shown-flavour").textContent = s.displayed;
+  }
+  if (s.displayed) await showFrame();
+}
+
+async function movePlayhead(path, fraction = 0) {
+  try {
+    await api("/api/playhead", { step: path, fraction });
+    status(`playhead at step ${path}`);
+  } catch (e) {
+    status(e.message, true);
+  }
+  await loadFlavours();
+}
+
 async function load() {
   view = await api("/api/scenario");
   $("title").textContent = view.name;
@@ -253,3 +371,6 @@ async function load() {
 }
 
 load();
+loadFlavours();
+// the live sessions follow the playhead in the background: keep the panel current
+setInterval(() => loadFlavours().catch(() => {}), 1000);

@@ -2,10 +2,10 @@
 
 Video editor for DemoVideoScript scenarios: edits timing and narration in abstract terms and renders narrated videos through any backend.
 
-> **Status:** scenario files are edited in scenario terms (`dvs-studio edit`) and rendered
-> through a pack on a chosen backend (`dvs-studio render`); several flavours at once comes
-> next. The keyframe-script editor and render pipeline moved here from GuiAssert, with their
-> history.
+> **Status:** scenario files are edited in scenario terms (`dvs-studio edit`), rendered
+> through a pack on a chosen backend (`dvs-studio render`), and shown on several flavours at
+> once; opening test-run recordings and converting keyframe scripts comes next. The
+> keyframe-script editor and render pipeline moved here from GuiAssert, with their history.
 
 DemoVideoStudio edits a [DemoVideoScript](https://github.com/metacraft-labs/DemoVideoScript)
 scenario's timing and presentation — pacing, narration, captions, callouts, presenter
@@ -16,18 +16,19 @@ also available headless, for CI and documentation builds.
 
 ## What is here
 
-| Module (`src/demo_video_studio/`)          |                                                                                                                                 |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `scenario_doc`                             | a scenario file as the editor's document: edits written back as anchors, `dwell`, `lead-in`, pacing and locators, comments kept |
-| `scenario_editor`, `editor-web/scenario.*` | the scenario editor's HTTP surface and page, and target picking through a flavour's `hit`                                       |
-| `render`                                   | a render: the run on a flavour, narration, captions, callouts and the presenter placed on its step offsets, composition         |
-| `editor_backend`, `editor-web/`            | the timeline editor: an HTTP surface and its web UI, with a three-tier preview cache                                            |
-| `media`                                    | composition: ffmpeg filter graphs for captions, overlays and the presenter                                                      |
-| `speech_synthesis`, `speech_synth`         | narration, through provider plugins (macOS `say` built in)                                                                      |
-| `talking_head`, `avatar_track`, `emotive`  | the presenter overlay and its provider contract                                                                                 |
-| `artifact_project`                         | the per-stage artifact layout and its staleness rules                                                                           |
-| `storyboard`                               | a script from a goal                                                                                                            |
-| `parser`, `driver`                         | the keyframe-script format the editor edits today, and its driver                                                               |
+| Module (`src/demo_video_studio/`)          |                                                                                                                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scenario_doc`                             | a scenario file as the editor's document: edits written back as anchors, `dwell`, `lead-in`, pacing and locators, comments kept                                           |
+| `scenario_editor`, `editor-web/scenario.*` | the scenario editor's HTTP surface and page, and target picking through a flavour's `hit`                                                                                 |
+| `render`                                   | a render: the run on a flavour, narration, captions, callouts and the presenter placed on its step offsets, composition                                                   |
+| `flavour`, `resident`                      | flavours loaded at once: each one's render in memory and its live session, a step-position playhead they follow in lockstep, a memory budget that asks rather than evicts |
+| `editor_backend`, `editor-web/`            | the timeline editor: an HTTP surface and its web UI, with a three-tier preview cache                                                                                      |
+| `media`                                    | composition: ffmpeg filter graphs for captions, overlays and the presenter                                                                                                |
+| `speech_synthesis`, `speech_synth`         | narration, through provider plugins (macOS `say` built in)                                                                                                                |
+| `talking_head`, `avatar_track`, `emotive`  | the presenter overlay and its provider contract                                                                                                                           |
+| `artifact_project`                         | the per-stage artifact layout and its staleness rules                                                                                                                     |
+| `storyboard`                               | a script from a goal                                                                                                                                                      |
+| `parser`, `driver`                         | the keyframe-script format the editor edits today, and its driver                                                                                                         |
 
 ### The provider plugin contract
 
@@ -60,6 +61,15 @@ scenario file as the format's own values, never a time, and an edit that would n
 refused. Clicking the preview picks the selected step's target: the role instance there,
 named by its semantic keys.
 
+## Several flavours at once
+
+In the editor, the Flavours panel lists each `--flavour` with whether the scenario applies
+there. Loading one renders it and keeps it resident — its render in memory and a live
+session — until it is unloaded; switching between loaded flavours reads and runs nothing.
+The playhead is a step (double-click one on the timeline); every live session follows it.
+A memory budget being exceeded is reported with the flavours that could be unloaded;
+nothing is unloaded without asking.
+
 ## Rendering a scenario
 
 ```sh
@@ -88,6 +98,7 @@ browsers, `agg` and the pinned font.
 | `just build`                                   | `build/bin/dvs-studio`                                                                     |
 | `just mutate dvs10`                            | planted defects in the scenario editor must turn its suite red                             |
 | `just mutate dvs11`                            | planted defects in the render must turn its suite red                                      |
+| `just mutate dvs12`                            | planted defects in the resident flavours must turn their suite red                         |
 | `just lint`                                    | `nim check` of every suite, `nixfmt`                                                       |
 | `python3 tests/mutation/run-dvs8-mutations.py` | planted defects in the moved code must turn the suites red                                 |
 | `python3 tests/mutation/run-dvs9-mutations.py` | planted defects in the plugin contract must turn its conformance suite red                 |

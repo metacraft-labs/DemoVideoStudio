@@ -1,0 +1,17 @@
+# dvs12 mutation results — 2026-10-29 00:27:54 +0200
+# kill command: bash -c nim c --hints:off --warnings:off --passC:-w --threads:on --nimcache:$BUILD_DIR/nc-cli -o:$BUILD_DIR/dvs-studio src/dvs_studio.nim && DVS_STUDIO_BIN=$BUILD_DIR/dvs-studio nim c -r --hints:off --warnings:off --passC:-w --threads:on --nimcache:$BUILD_DIR/nc -o:$BUILD_DIR/tflavours tests/tflavours.nim
+
+KILLED   F1      113.2s  a switch that re-reads the render
+           |   [OK] a narration edit leaves both recordings fresh; an input edit stales both
+           |   [OK] unloading is explicit and ends the live session
+           | Error: execution of an external program failed: '$BUILD_DIR/tflavours'
+KILLED   F2      280.2s  an eviction without asking
+           |   [FAILED] a narration edit leaves both recordings fresh; an input edit stales both
+           |   [OK] unloading is explicit and ends the live session
+           | Error: execution of an external program failed: '$BUILD_DIR/tflavours'
+KILLED   F3       74.8s  a playhead kept as a time
+           |   [OK] a narration edit leaves both recordings fresh; an input edit stales both
+           |   [OK] unloading is explicit and ends the live session
+           | Error: execution of an external program failed: '$BUILD_DIR/tflavours'
+
+3/3 killed, 0 survived

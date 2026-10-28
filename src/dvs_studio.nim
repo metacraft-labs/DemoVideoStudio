@@ -73,6 +73,7 @@ proc cmdEdit(args: seq[string]) =
     let ed = newScenarioEditor(doc, flavours)
     ed.start(port)
     echo "dvs-studio: editing ", scenarioPath, " on http://127.0.0.1:", int(ed.port), "/"
+    flushFile(stdout)
     ed.serveForever()
   except EditError as e:
     stderr.writeLine "dvs-studio: " & e.msg

@@ -1,7 +1,7 @@
 # Siblings cloned by setup-dev-env, each at an explicit commit: the studio is
 # built and tested against exactly these.
 GuiAssert=fbe1c80b1c290fe428c60f4e6a3a945978b3f97e  # GuiAssert@agents: the video-production modules moved out
-DemoVideoScript=1a47933e19eb84e6f149b67f007dba9618ce3356  # DemoVideoScript@agents: callouts' targets in recorded runs
+DemoVideoScript=0509e34aa40e45f5783a817c8f3862ec25e30070  # DemoVideoScript@agents: applicability without a run; driving a staged session
 DemoVideoScript-TermAssert=465573f9e6996045e2882d5be3c08f4281cda174  # DemoVideoScript-TermAssert@agents: the terminal flavour
 TermAssert=ad74669955a242bf8be2de2b6b5bf8b087294914  # TermAssert@agents: drags, and keys with modifiers
 nim-libvterm=a96c190d57f3c8593e6f6116cc06f08c2bde7c10  # nim-libvterm@agents: Screen.mouseTracking

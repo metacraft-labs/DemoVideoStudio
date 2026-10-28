@@ -86,7 +86,38 @@ try {
   );
   const s3 = await page.textContent("#status");
   if (!s3.includes('note-list/note[title="Recipes"]')) fail(`pick: ${s3}`);
-  console.log(JSON.stringify({ narration: s1, gap: s2, pick: s3 }));
+  // load the terminal flavour from the panel: it becomes resident and its
+  // frame at the playhead is shown; double-clicking a step moves the playhead
+  // and the live session follows it
+  await page.click(
+    '#flavours tr[data-flavour="terminal"] button[data-op="load"]',
+  );
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('#flavours tr[data-flavour="terminal"] td:nth-child(3)')
+        ?.textContent.startsWith("at step"),
+    null,
+    { timeout: 240000 },
+  );
+  await page.waitForFunction(
+    () => document.getElementById("frame").naturalWidth > 0,
+    null,
+    { timeout: 30000 },
+  );
+  await page.dblclick('.step[data-path="3.1"]');
+  await page.waitForFunction(
+    () =>
+      document.querySelector(
+        '#flavours tr[data-flavour="terminal"] td:nth-child(3)',
+      )?.textContent === "at step 5",
+    null,
+    { timeout: 60000 },
+  );
+  const shown = await page.textContent("#shown-source");
+  if (!shown.includes("step 3.1"))
+    fail(`the frame is not at the playhead: ${shown}`);
+  console.log(JSON.stringify({ narration: s1, gap: s2, pick: s3, shown }));
 } catch (e) {
   fail(String((e && e.stack) || e));
 } finally {

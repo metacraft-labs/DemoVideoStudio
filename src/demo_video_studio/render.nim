@@ -21,8 +21,10 @@
 import std/[algorithm, json, math, options, os, osproc, strutils, tables]
 import demo_video_script/[backend, jsonlines, runner, model]
 import gui_assert/ffmpeg_tools
-import ./[scenario_doc, scenario_editor, media, avatar_track, speech_synthesis]
+import ./[scenario_doc, flavour, media, avatar_track, speech_synthesis]
 import ./speech_synthesis/core as speech_core
+
+export flavour
 
 type
   RenderOptions* = object

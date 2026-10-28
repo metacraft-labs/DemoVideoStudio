@@ -181,3 +181,35 @@ main {
   font-size: 12px;
   padding-left: 18px;
 }
+
+#banner {
+  background: var(--narration);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+#flavours {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+#flavours th,
+#flavours td {
+  text-align: left;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--line);
+}
+#flavours tr.displayed td:first-child {
+  font-weight: 600;
+  color: var(--accent);
+}
+#flavours button {
+  font-size: 11px;
+  margin-right: 4px;
+}
+#frame {
+  max-width: 100%;
+  display: block;
+  background: #000;
+  min-height: 40px;
+}

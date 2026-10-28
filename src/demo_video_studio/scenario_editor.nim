@@ -22,23 +22,21 @@
 ##   POST /api/avatar          {keyframes: […]} (`setAvatarKeyframes`)
 ##   GET  /…                   the web UI (`editor-web/scenario.html`)
 
-import std/[asyncdispatch, asynchttpserver, json, options, os, strutils, tables]
+import std/[asyncdispatch, asynchttpserver, json, options, os, sequtils, strutils, tables, uri]
 import demo_video_script/[backend, jsonlines, runner, grammar, lint]
-import ./scenario_doc
+import ./[scenario_doc, flavour, resident, render]
+
+export flavour, resident
 
 type
-  Flavour* = object
-    name*: string
-    command*: string
-    args*: seq[string]
-    virtualTiming*: bool    ## timing applied at render (a terminal flavour, §4.2)
-
   ScenarioEditor* = ref object
     doc*: ScenarioDoc
     flavours*: seq[Flavour]
     selected*: string
     webRoot*: string
+    resident*: Flavours          ## flavours loaded at once (§5)
     server: AsyncHttpServer
+    accepting: Future[void]
     port*: Port
 
   PickRefused* = object of CatchableError
@@ -50,6 +48,7 @@ proc newScenarioEditor*(doc: ScenarioDoc; flavours: seq[Flavour] = @[];
                                     else: currentSourcePath().parentDir.parentDir.parentDir /
                                           "editor-web"))
   if flavours.len > 0: result.selected = flavours[0].name
+  result.resident = newFlavours(doc, flavours)
 
 proc flavour*(ed: ScenarioEditor; name: string): Flavour =
   let n = (if name == "": ed.selected else: name)
@@ -261,9 +260,31 @@ proc dispatch(ed: ScenarioEditor; req: Request) {.async.} =
                                              "text": ed.doc.stillBefore(step)})
         except EditError as e: await refused(req, e)
       of "/api/flavours":
-        var a = newJArray()
-        for f in ed.flavours: a.add %*{"name": f.name, "virtualTiming": f.virtualTiming}
-        await respondJson(req, Http200, %*{"flavours": a, "selected": ed.selected})
+        var j = ed.resident.statusJson
+        j["selected"] = %ed.selected
+        await respondJson(req, Http200, j)
+      of "/api/frame":
+        # the displayed (or named) flavour's frame at the playhead, from memory
+        var name = ed.resident.displayed
+        for kv in req.url.query.split('&'):
+          if kv.startsWith("flavour="): name = kv[8 .. ^1]
+        try:
+          await req.respond(Http200, ed.resident.frame(name),
+                            newHttpHeaders([("Content-Type", "image/png"),
+                                            ("Cache-Control", "no-store")]))
+        except FlavourError as e: await refused(req, e)
+      of "/api/live":
+        var name, locator, props: string
+        for kv in req.url.query.split('&'):
+          let p = kv.split('=', 1)
+          if p.len == 2:
+            case p[0]
+            of "flavour": name = decodeUrl(p[1])
+            of "locator": locator = decodeUrl(p[1])
+            of "props": props = decodeUrl(p[1])
+        try:
+          await respondJson(req, Http200, ed.resident.readLive(name, locator, props.split(',')))
+        except FlavourError as e: await refused(req, e)
       else:
         var p = (if path == "/" or path == "": "/scenario.html" else: path)
         if p.contains(".."):
@@ -280,7 +301,11 @@ proc dispatch(ed: ScenarioEditor; req: Request) {.async.} =
       case path
       of "/api/edit":
         try:
-          await respondJson(req, Http200, editJson(ed.doc.applyEdit(body)))
+          let r = ed.doc.applyEdit(body)
+          ed.resident.invalidate(r.invalidated)
+          var j = editJson(r)
+          j["rerecord"] = ed.resident.statusJson["rerecord"]
+          await respondJson(req, Http200, j)
         except EditError as e:
           var diags = newJArray()
           for x in e.diagnostics: diags.add %($x)
@@ -292,6 +317,35 @@ proc dispatch(ed: ScenarioEditor; req: Request) {.async.} =
                             body{"flavour"}.getStr))
         except PickRefused as e: await refused(req, e)
         except EditError as e: await refused(req, e)
+      of "/api/load":
+        try:
+          let rep = ed.resident.load(body{"flavour"}.getStr)
+          var j = reportJson(rep)
+          j["status"] = ed.resident.statusJson
+          await respondJson(req, (if rep.ok: Http200 else: Http422), j)
+        except FlavourError as e: await refused(req, e)
+      of "/api/unload":
+        ed.resident.unload(body{"flavour"}.getStr)
+        await respondJson(req, Http200, ed.resident.statusJson)
+      of "/api/suspend", "/api/resume":
+        try:
+          if path == "/api/suspend": ed.resident.suspend(body{"flavour"}.getStr)
+          else: ed.resident.resume(body{"flavour"}.getStr)
+          await respondJson(req, Http200, %*{"ok": true})
+        except FlavourError as e: await refused(req, e)
+      of "/api/budget":
+        ed.resident.budget = body{"bytes"}.getBiggestInt(DefaultBudget)
+        await respondJson(req, Http200, ed.resident.statusJson)
+      of "/api/playhead":
+        try:
+          ed.resident.setPlayhead(body{"step"}.getStr, body{"fraction"}.getFloat(0))
+          await respondJson(req, Http200, %*{"ok": true, "step": ed.resident.playheadStep,
+                                             "fraction": ed.resident.playheadFraction})
+        except FlavourError as e: await refused(req, e)
+      of "/api/switch":
+        # what is displayed changes, and nothing else (§5.3)
+        try: await respondJson(req, Http200, ed.resident.view(body{"flavour"}.getStr))
+        except FlavourError as e: await refused(req, e)
       of "/api/avatar":
         try:
           await respondJson(req, Http200, editJson(ed.doc.setAvatarKeyframes(body{"keyframes"})))
@@ -307,15 +361,20 @@ proc start*(ed: ScenarioEditor; port = 0) =
   ed.port = ed.server.getPort
 
 proc pumpOnce*(ed: ScenarioEditor): Future[bool] {.async.} =
-  ## Serve one request if one is waiting. False once stopped.
+  ## One turn of the server: keep a connection being accepted (requests are
+  ## served as they arrive), and do one unit of background work — the live
+  ## sessions following the playhead (§5.4) — when there is some. False once
+  ## stopped.
   if ed.server == nil: return false
-  if ed.server.shouldAcceptRequest():
+  if ed.accepting == nil or ed.accepting.finished:
     # one thread serves; the document is not shared across threads
-    await ed.server.acceptRequest(proc (req: Request): Future[void] {.async, gcsafe.} =
+    ed.accepting = ed.server.acceptRequest(proc (req: Request): Future[void] {.async, gcsafe.} =
       {.cast(gcsafe).}:
         await dispatch(ed, req))
-    return true
-  await sleepAsync(10)
+  var worked = false
+  try: worked = ed.resident.advance()
+  except CatchableError: discard
+  await sleepAsync(if worked: 0 else: 10)
   true
 
 proc serveForever*(ed: ScenarioEditor) =
@@ -326,3 +385,4 @@ proc stop*(ed: ScenarioEditor) =
   if ed.server != nil:
     ed.server.close()
     ed.server = nil
+  for name in toSeq(ed.resident.resident.keys): ed.resident.unload(name)
