@@ -1,0 +1,17 @@
+# dvs9 mutation results — 2026-10-28 20:58:13 +0200
+# kill command: bash -c nim c -r --hints:off --passC:-w --nimcache:$BUILD_DIR/nc -o:$BUILD_DIR/tplugin_contract tests/tplugin_contract.nim
+
+KILLED   P1       22.0s  a cache key ignoring the voice
+           | ../dvs-studio/src/demo_video_studio/plugins/kit.nim(16, 36) Warning: imported and not used: 'json' [UnusedImport]
+           | ../dvs-studio/tests/tplugin_contract.nim(8, 23) Warning: imported and not used: 'os' [UnusedImport]
+           | Error: execution of an external program failed: '$BUILD_DIR/tplugin_contract'
+KILLED   P2       11.0s  a registry returning the wrong provider
+           | ../dvs-studio/src/demo_video_studio/plugins/kit.nim(16, 36) Warning: imported and not used: 'json' [UnusedImport]
+           | ../dvs-studio/tests/tplugin_contract.nim(8, 23) Warning: imported and not used: 'os' [UnusedImport]
+           | Error: execution of an external program failed: '$BUILD_DIR/tplugin_contract'
+KILLED   P3       29.6s  an unavailable provider run instead of refused
+           | ../dvs-studio/src/demo_video_studio/plugins/kit.nim(16, 36) Warning: imported and not used: 'json' [UnusedImport]
+           | ../dvs-studio/tests/tplugin_contract.nim(8, 23) Warning: imported and not used: 'os' [UnusedImport]
+           | Error: execution of an external program failed: '$BUILD_DIR/tplugin_contract'
+
+3/3 killed, 0 survived

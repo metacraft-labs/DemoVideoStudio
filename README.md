@@ -14,15 +14,27 @@ also available headless, for CI and documentation builds.
 
 ## What is here
 
-| Module (`src/demo_video_studio/`) | |
-|---|---|
-| `editor_backend`, `editor-web/` | the timeline editor: an HTTP surface and its web UI, with a three-tier preview cache |
-| `media` | composition: ffmpeg filter graphs for captions, overlays and the presenter |
-| `speech_synthesis`, `speech_synth` | narration, through provider plugins (macOS `say` built in) |
-| `talking_head`, `avatar_track`, `emotive` | the presenter overlay and its provider contract |
-| `artifact_project` | the per-stage artifact layout and its staleness rules |
-| `storyboard` | a script from a goal |
-| `parser`, `driver` | the keyframe-script format the editor edits today, and its driver |
+| Module (`src/demo_video_studio/`)         |                                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------------ |
+| `editor_backend`, `editor-web/`           | the timeline editor: an HTTP surface and its web UI, with a three-tier preview cache |
+| `media`                                   | composition: ffmpeg filter graphs for captions, overlays and the presenter           |
+| `speech_synthesis`, `speech_synth`        | narration, through provider plugins (macOS `say` built in)                           |
+| `talking_head`, `avatar_track`, `emotive` | the presenter overlay and its provider contract                                      |
+| `artifact_project`                        | the per-stage artifact layout and its staleness rules                                |
+| `storyboard`                              | a script from a goal                                                                 |
+| `parser`, `driver`                        | the keyframe-script format the editor edits today, and its driver                    |
+
+### The provider plugin contract
+
+`demo_video_studio/plugins/talking_head` and `demo_video_studio/plugins/speech_synthesis`
+are the contract presenter and narration plugins build against (version 1:
+`TalkingHeadContractVersion`, `SpeechSynthesisContractVersion`), and
+`demo_video_studio/plugins/kit` is its conformance kit: every plugin's own suite runs
+`talkingHeadProblems(provider)` or `speechSynthesisProblems(provider)` — the name, the
+registration, the availability probe, the cache key, and an unavailable provider refused
+by name before it runs — offline, with no credentials. The `GuiAssert-*` plugins
+(HeyGen, ElevenLabs, D-ID, Synthesia, Tavus, SadTalker, Wav2Lip, MuseTalk) build against
+it.
 
 Capture, OCR, image math and the PTY stay in [GuiAssert](https://github.com/metacraft-labs/GuiAssert),
 which this repository depends on. Narration and the presenter are optional: a silent
@@ -33,11 +45,12 @@ render needs no provider and no network.
 GuiAssert is expected at `../GuiAssert` (or `GUI_ASSERT_SRC`), at the commit in
 `.github/sibling-repos`.
 
-| Recipe | Does |
-|---|---|
-| `just test` | the moved suites, with a real ffmpeg |
-| `just lint` | `nim check` of every suite, `nixfmt` |
-| `python3 tests/mutation/run-dvs8-mutations.py` | planted defects in the moved code must turn the suites red |
+| Recipe                                         | Does                                                                       |
+| ---------------------------------------------- | -------------------------------------------------------------------------- |
+| `just test`                                    | the moved suites, with a real ffmpeg                                       |
+| `just lint`                                    | `nim check` of every suite, `nixfmt`                                       |
+| `python3 tests/mutation/run-dvs8-mutations.py` | planted defects in the moved code must turn the suites red                 |
+| `python3 tests/mutation/run-dvs9-mutations.py` | planted defects in the plugin contract must turn its conformance suite red |
 
 ## License
 
