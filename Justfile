@@ -1,26 +1,51 @@
 ## Justfile - DemoVideoStudio.
 ##
-## GuiAssert (capture, ffmpeg helpers, the PTY) comes from the checkout named in
-## .github/sibling-repos next to this one, or GUI_ASSERT_SRC. Build outputs go
-## under BUILD_DIR.
+## The siblings named in .github/sibling-repos come from checkouts next to this
+## one, or the *_SRC variables: GuiAssert (capture, ffmpeg helpers),
+## DemoVideoScript (the scenario model, linter, runner and protocol), and the
+## terminal flavour the editor's suites pick through (DemoVideoScript-TermAssert
+## and what it builds on). Build outputs go under BUILD_DIR.
 
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
 alias t := test
 
 build_dir := env_var_or_default("BUILD_DIR", "build")
-nim_flags := "--hints:off --passC:-w"
-suites := "tplugin_contract tsilent_render tparser tmedia tspeech_synthesis ttalking_head temotive tdiscovery tartifact_project tartifact_pipeline teditor tdriver_browser tdriver_vscode tdriver_storyboard"
+nim_flags := "--hints:off --passC:-w --threads:on"
+dvs_src := env_var_or_default("DVS_SRC", "../DemoVideoScript/src")
+dvs_root := dvs_src / ".."
+ta_root := env_var_or_default("DVS_TERMASSERT_ROOT", "../DemoVideoScript-TermAssert")
+ta_paths := "--path:" + ta_root + "/src --path:" + dvs_src + " --path:" + env_var_or_default("TERM_ASSERT_SRC", "../TermAssert/src") + " --path:" + env_var_or_default("NIM_PTY_SRC", "../nim-pty/src") + " --path:" + env_var_or_default("NIM_LIBVTERM_SRC", "../nim-libvterm/src") + " --path:" + env_var_or_default("TERM_ASSERT_CLIENT_SRC", "../TermAssertClient/src")
+flavours := build_dir / "flavours"
+# the terminal flavour, for the suites that pick and run through it
+flavour_env := "DVS_TERMINAL_HOST=" + flavours + "/dvs-termassert-notes DVS_NOTES_TUI=" + flavours + "/notes-tui DVS_ROOT=" + dvs_root
+suites := "tscenario_editor tscenario_ui tplugin_contract tsilent_render tparser tmedia tspeech_synthesis ttalking_head temotive tdiscovery tartifact_project tartifact_pipeline teditor tdriver_browser tdriver_vscode tdriver_storyboard"
 
 # The moved suites, unchanged in what they check: composition through a real
 # ffmpeg, the editor's HTTP surface, the artifact pipeline, the keyframe-script
 # parser and driver, narration and the presenter overlay without a provider.
-test:
+test: build-flavours
     @mkdir -p {{build_dir}}/test-bin
     @for f in {{suites}}; do \
       echo "===== $f ====="; \
-      nim c -r {{nim_flags}} --nimcache:{{build_dir}}/nimcache/$f -o:{{build_dir}}/test-bin/$f tests/$f.nim || exit 1; \
+      {{flavour_env}} nim c -r {{nim_flags}} --nimcache:{{build_dir}}/nimcache/$f -o:{{build_dir}}/test-bin/$f tests/$f.nim || exit 1; \
     done
+
+# The terminal flavour: DemoVideoScript-TermAssert's JSON-lines host with the
+# conformance binding, and the conformance application's terminal build.
+build-flavours:
+    @mkdir -p {{flavours}}
+    nim c {{nim_flags}} --mm:orc -d:release {{ta_paths}} --nimcache:{{build_dir}}/nimcache/flavour-terminal -o:{{flavours}}/dvs-termassert-notes {{ta_root}}/conformance/dvs_termassert_notes.nim
+    nim c {{nim_flags}} --mm:orc -d:release --nimcache:{{build_dir}}/nimcache/notes-tui -o:{{flavours}}/notes-tui {{dvs_root}}/conformance/app/notes_tui.nim
+
+# `dvs-studio`, the command line.
+build:
+    @mkdir -p {{build_dir}}/bin
+    nim c {{nim_flags}} -d:release --nimcache:{{build_dir}}/nimcache/dvs-studio -o:{{build_dir}}/bin/dvs-studio src/dvs_studio.nim
+
+# A mutation harness: `just mutate dvs10`.
+mutate name: build-flavours
+    {{flavour_env}} python3 tests/mutation/run-{{name}}-mutations.py
 
 lint: lint-nim lint-nix
 

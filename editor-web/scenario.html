@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scenario Editor</title>
+    <link rel="stylesheet" href="scenario.css" />
+  </head>
+  <body>
+    <header>
+      <h1 id="title">Scenario</h1>
+      <span id="flavour"></span>
+      <span id="status" role="status"></span>
+    </header>
+    <main>
+      <section id="timeline-pane" aria-label="Timeline">
+        <div id="ruler"></div>
+        <div class="track-label">Actions</div>
+        <div id="actions" class="track"></div>
+        <div class="track-label">Narration</div>
+        <div id="narration" class="track"></div>
+        <div class="track-label">Captions</div>
+        <div id="captions" class="track"></div>
+      </section>
+      <section id="side">
+        <h2>Step <span id="sel-path">—</span></h2>
+        <dl id="sel-props"></dl>
+        <h2>
+          Preview <small>(click to pick the selected step's target)</small>
+        </h2>
+        <pre id="preview" tabindex="0"></pre>
+        <h2>Diagnostics</h2>
+        <ul id="diagnostics"></ul>
+      </section>
+    </main>
+    <script src="scenario.js"></script>
+  </body>
+</html>

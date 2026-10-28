@@ -1,0 +1,17 @@
+# dvs10 mutation results — 2026-10-28 23:39:07 +0200
+# kill command: bash -c nim c -r --hints:off --warnings:off --passC:-w --threads:on --nimcache:$BUILD_DIR/nc -o:$BUILD_DIR/tscenario_editor tests/tscenario_editor.nim
+
+KILLED   T1       32.6s  an absolute time written back
+           |   [OK] avatar keyframes are canvas geometry at a time relative to a step
+           |   [OK] the saved scenario keeps its comments and key order, and holds no time
+           | Error: execution of an external program failed: '$BUILD_DIR/tscenario_editor'
+KILLED   T2       19.5s  an ordinal preferred over a key
+           |   [OK] avatar keyframes are canvas geometry at a time relative to a step
+           |   [OK] the saved scenario keeps its comments and key order, and holds no time
+           | Error: execution of an external program failed: '$BUILD_DIR/tscenario_editor'
+KILLED   T3       28.4s  a presentation edit invalidating automation
+           |   [OK] avatar keyframes are canvas geometry at a time relative to a step
+           |   [OK] the saved scenario keeps its comments and key order, and holds no time
+           | Error: execution of an external program failed: '$BUILD_DIR/tscenario_editor'
+
+3/3 killed, 0 survived

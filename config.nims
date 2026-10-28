@@ -4,3 +4,7 @@
 # names its `src`.
 switch("path", "src")
 switch("path", getEnv("GUI_ASSERT_SRC", thisDir() & "/../GuiAssert/src"))
+# DemoVideoScript (the scenario model, the linter, the runner and the backend
+# protocol) is the sibling checkout `../DemoVideoScript` unless DVS_SRC names
+# its `src`.
+switch("path", getEnv("DVS_SRC", thisDir() & "/../DemoVideoScript/src"))

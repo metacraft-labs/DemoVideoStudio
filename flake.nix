@@ -101,11 +101,17 @@
                 shellcheck
                 # composition, narration and the editor's previews run ffmpeg
                 ffmpeg
+                # the scenario editor's page, driven in a real browser
+                nodejs
               ]
               # The Linux host TTS engine (`speech_synth` / the `espeak`
               # speech-synthesis provider run `espeak-ng -w <out> <text>`).
               # macOS ships its counterpart, `say`, with the OS.
               ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.espeak-ng ];
+            # Playwright and the browsers it drives come from the same nixpkgs
+            PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+            PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
+            DVS_PLAYWRIGHT_CORE = "${pkgs.playwright-driver}";
             shellHook = ''
               ${ownRepoOnly installGitHooks}
               export FFMPEG_BIN=${pkgs.ffmpeg}/bin/ffmpeg
