@@ -12,10 +12,10 @@ import std/[algorithm, asyncdispatch, httpclient, json, options, os,
             osproc, sequtils, strformat, strtabs, strutils, streams,
             tables, times, unittest]
 
-import ../src/gui_assert/parser
-import ../src/gui_assert/avatar_track
-import ../src/gui_assert/artifact_project
-import ../src/gui_assert/editor_backend
+import ../src/demo_video_studio/parser
+import ../src/demo_video_studio/avatar_track
+import ../src/demo_video_studio/artifact_project
+import ../src/demo_video_studio/editor_backend
 
 # ---------------------------------------------------------------------------
 # Helpers

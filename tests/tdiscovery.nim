@@ -1,7 +1,7 @@
 ## Pure tests for the dry-run / capability discovery shared types.
 
 import std/[strutils, unittest]
-import gui_assert/emotive
+import demo_video_studio/emotive
 
 suite "DryRunReport":
 

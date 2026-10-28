@@ -12,8 +12,8 @@
 
 import std/[algorithm, json, options, os, osproc, sequtils, streams,
             strformat, strtabs, strutils, unittest]
-import ../src/gui_assert/speech_synth
-import ../src/gui_assert/media
+import ../src/demo_video_studio/speech_synth
+import ../src/demo_video_studio/media
 
 # ---------------------------------------------------------------------------
 # ffmpeg discovery

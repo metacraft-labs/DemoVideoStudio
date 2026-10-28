@@ -1,0 +1,3 @@
+# Siblings cloned by setup-dev-env, each at an explicit commit: the studio is
+# built and tested against exactly these.
+GuiAssert=547d91bd298195e79cd92003de57ae2cf76bb2de  # GuiAssert@agents: ffmpeg helpers in their own module

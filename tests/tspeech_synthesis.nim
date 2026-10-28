@@ -23,9 +23,9 @@
 import std/[json, options, os, osproc, streams, strformat, strutils,
             unittest]
 
-import ../src/gui_assert/speech_synthesis
-import ../src/gui_assert/speech_synthesis/core
-import ../src/gui_assert/speech_synthesis/say_provider
+import ../src/demo_video_studio/speech_synthesis
+import ../src/demo_video_studio/speech_synthesis/core
+import ../src/demo_video_studio/speech_synthesis/say_provider
 
 # ---------------------------------------------------------------------------
 # Pure tests

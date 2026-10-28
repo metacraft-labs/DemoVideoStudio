@@ -10,7 +10,7 @@
 ##      without error.
 
 import std/[json, options, strutils, tables, unittest]
-import ../src/gui_assert/parser
+import ../src/demo_video_studio/parser
 
 const fourKeyframeYaml = """
 metadata:

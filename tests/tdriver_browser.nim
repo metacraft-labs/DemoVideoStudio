@@ -2,8 +2,8 @@
 ## Playwright JSON command.
 
 import std/[json, unittest]
-import ../src/gui_assert/parser
-import ../src/gui_assert/driver
+import ../src/demo_video_studio/parser
+import ../src/demo_video_studio/driver
 
 suite "browser driver Playwright emission":
 

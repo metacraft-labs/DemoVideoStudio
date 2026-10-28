@@ -1,0 +1,21 @@
+# dvs8 mutation results — 2026-10-28 20:20:18 +0200
+# kill command: just test
+
+KILLED   S1      240.9s  a staleness rule inverted
+           | ../dvs-studio/tests/tartifact_project.nim(7, 42) Warning: imported and not used: 'tables' [UnusedImport]
+           | Error: execution of an external program failed: '$BUILD_DIR/test-bin/tartifact_project'
+           | error: Recipe `test` failed on line 23 with exit code 1
+KILLED   S2      185.0s  an empty stage output counted as present
+           | /nix/store/fs8nqcqbz72ljxfhppqnr5g742s9w84n-nim-unwrapped-2.2.4/nim/lib/pure/asyncmacro.nim(49, 5) Warning: catch a more precise Exception deriving from Catchab
+           | Error: execution of an external program failed: '$BUILD_DIR/test-bin/teditor'
+           | error: Recipe `test` failed on line 23 with exit code 1
+KILLED   M1       45.1s  a filter graph dropping the overlay
+           | ../dvs-studio/src/demo_video_studio/avatar_track.nim(17, 19) Warning: imported and not used: 'options' [UnusedImport]
+           | Error: execution of an external program failed: '$BUILD_DIR/test-bin/tmedia'
+           | error: Recipe `test` failed on line 23 with exit code 1
+KILLED   M2       83.2s  a filter graph dropping the captions
+           | ../dvs-studio/src/demo_video_studio/avatar_track.nim(17, 19) Warning: imported and not used: 'options' [UnusedImport]
+           | Error: execution of an external program failed: '$BUILD_DIR/test-bin/tmedia'
+           | error: Recipe `test` failed on line 23 with exit code 1
+
+4/4 killed, 0 survived

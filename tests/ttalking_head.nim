@@ -21,8 +21,8 @@
 
 import std/[json, options, os, tables, unittest]
 
-import ../src/gui_assert/parser
-import ../src/gui_assert/talking_head
+import ../src/demo_video_studio/parser
+import ../src/demo_video_studio/talking_head
 
 # ---------------------------------------------------------------------------
 # Tiny WAV / PNG fixtures

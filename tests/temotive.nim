@@ -1,7 +1,7 @@
 ## Pure tests for the common emotive + avatar preference contract.
 
 import std/[json, options, strutils, tables, unittest]
-import gui_assert/emotive
+import demo_video_studio/emotive
 
 # ---------------------------------------------------------------------------
 # Enum parsing

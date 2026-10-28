@@ -22,7 +22,7 @@
 
 import std/[json, options, net, os, strutils, monotimes, times, math]
 import ./parser
-import ./pty_unix
+import gui_assert/pty_unix
 
 # ===========================================================================
 # Common

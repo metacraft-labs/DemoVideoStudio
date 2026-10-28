@@ -1,24 +1,22 @@
-## GuiAssert end-to-end tests
+## The keyframe-script driver and the storyboard, end to end
 ##
 ## The test file hosts:
 ##
 ##   * `e2e_terminal_action_injection` (M2) — PTY driver timing precision.
 ##   * `verify_agent_storyboard_generation` (M4) — prompt-to-script.
-##   * `verify_gui_assert_frame_validation` (M4) — OCR + layout overflow.
-##   * SSIM identity sanity test for the visual math engine.
 ##
-## All tests perform real work: real PTY subprocesses, real ffmpeg-rendered
-## PNGs, and real Tesseract OCR. No mocks. No graceful skips.
+## (Moved from GuiAssert's tgui_assert.nim, whose frame-validation and SSIM
+## suites stay there with the modules they test.)
+##
+## All tests perform real work: real PTY subprocesses and real ffmpeg. No
+## mocks. No graceful skips.
 
 import std/[options, os, osproc, sequtils, streams, strformat, strtabs, strutils, unittest]
 
-import ../src/gui_assert
-import ../src/gui_assert/parser
-import ../src/gui_assert/driver
-import ../src/gui_assert/ocr
-import ../src/gui_assert/image_math
-import ../src/gui_assert/storyboard
-import ../src/gui_assert/media
+import ../src/demo_video_studio/parser
+import ../src/demo_video_studio/driver
+import ../src/demo_video_studio/storyboard
+import ../src/demo_video_studio/media
 
 # ---------------------------------------------------------------------------
 # Shared ffmpeg helper — pick a binary with drawtext support so we can
@@ -125,7 +123,8 @@ timeline:
     let script = parseScriptYaml(yaml)
     check script.timeline.len == 3
 
-    var driver = newPtyDriver(["/bin/cat"])
+    # `cat` from PATH: /bin/cat is not on every host (NixOS has only /bin/sh)
+    var driver = newPtyDriver(["cat"])
     defer: closeDriver(driver)
 
     let events = playScriptOnPty(driver, script)
@@ -282,150 +281,3 @@ suite "verify_agent_storyboard_generation":
                                 resolution: "100x100", fps: 30)
     expect StoryboardError:
       discard generateScriptYaml(bad, req)
-
-# ===========================================================================
-# M4: verify_gui_assert_frame_validation
-# ===========================================================================
-#
-# Generates a synthetic CodeTracer-styled frame:
-#
-#   * 1920x1080 testsrc background.
-#   * Overlay text "callstack: fibonacci(5)" placed in known pixel
-#     coordinates so the test can assert detectLayoutOverflow on a region
-#     rect the text crosses and another that it does not.
-#
-# The text is rendered via ffmpeg drawtext, then OCR'd via Tesseract.
-
-const FrameWidth = 1920
-const FrameHeight = 1080
-const TextLine = "callstack fibonacci function call"
-  ## Stick to alphabetic words: digits and parentheses in `fibonacci(5)`
-  ## travel through OCR less reliably than plain ASCII words.
-const TextX = 200      # absolute X of the rendered text's left edge
-const TextY = 500      # absolute Y of the rendered text's baseline-ish top
-const TextSize = 72    # pixel height of the rendered text
-
-proc generateCodeTracerTestFrame(path: string) =
-  ## Render a 1920x1080 PNG whose centre carries the recognisable line.
-  ## We deliberately use a high-contrast white-on-black render so Tesseract
-  ## reads it accurately without language packs beyond `eng`.
-  let drawText = "drawtext=text='" & TextLine & "':fontcolor=white:fontsize=" &
-                 $TextSize & ":x=" & $TextX & ":y=" & $TextY
-  let (output, code) = runFfmpegEx(@[
-    "-y", "-hide_banner", "-loglevel", "error",
-    "-f", "lavfi",
-    "-i", "color=c=black:size=" & $FrameWidth & "x" & $FrameHeight & ":d=1",
-    "-vf", drawText,
-    "-frames:v", "1",
-    path
-  ])
-  doAssert code == 0, "frame render failed: " & output
-  doAssert fileExists(path), "frame did not land at " & path
-
-suite "verify_gui_assert_frame_validation":
-
-  test "waitForText reads the rendered line and detectLayoutOverflow flags spillover":
-    let outDir = getTempDir() / "gui_assert_m4"
-    createDir(outDir)
-    let framePath = outDir / "codetracer_frame.png"
-    if fileExists(framePath): removeFile(framePath)
-
-    generateCodeTracerTestFrame(framePath)
-    let size = getFileSize(framePath)
-    check size > 1024
-    echo &"  rendered frame: {size} bytes at {framePath}"
-
-    let harness = newGuiAssertHarness(framePath)
-
-    # 1. OCR-driven waitForText: the rendered line contains "fibonacci".
-    let found = waitForText(harness, "fibonacci", timeoutMs = 2000)
-    if not found:
-      # Dump what we actually saw to make a future regression actionable.
-      let words = runOcr(framePath)
-      echo "OCR words: "
-      for w in words:
-        echo "  '", w.text, "' bbox=", w.bbox, " conf=", w.confidence
-    check found
-
-    # Sanity: the OCR also returns at least one word with a bounding box.
-    let words = runOcr(framePath)
-    check words.len > 0
-    var hasFibonacci = false
-    for w in words:
-      if "fibonacci" in w.text.toLowerAscii:
-        hasFibonacci = true
-        # Bounding box must lie reasonably near the rendered text location.
-        check w.bbox[0] >= 0
-        check w.bbox[1] >= 0
-        check w.bbox[2] > 0
-        check w.bbox[3] > 0
-    check hasFibonacci
-
-    # 2. detectLayoutOverflow — region that the text deliberately crosses.
-    # The rendered text sits around x in [TextX, TextX + ~1100], y in
-    # [TextY, TextY + ~80]. A pane that ends at x=400 must be flagged.
-    let overflowingRegion: array[4, int] = [0, 0, 400, 1080]
-    check detectLayoutOverflow(harness, framePath, @[overflowingRegion]) == true
-
-    # And a region that comfortably contains every recognised word — must
-    # be reported as non-overflowing. The full canvas qualifies.
-    let containingRegion: array[4, int] = [0, 0, FrameWidth, FrameHeight]
-    check detectLayoutOverflow(harness, framePath, @[containingRegion]) == false
-
-# ===========================================================================
-# M4: SSIM identity & mismatch sanity
-# ===========================================================================
-
-suite "image_math.ssim":
-
-  test "identical PNGs score >= tolerance":
-    let outDir = getTempDir() / "gui_assert_m4_ssim"
-    createDir(outDir)
-    let a = outDir / "frame_a.png"
-    let b = outDir / "frame_b.png"
-
-    let (out1, code1) = runFfmpegEx(@[
-      "-y", "-hide_banner", "-loglevel", "error",
-      "-f", "lavfi",
-      "-i", "testsrc=size=640x360:rate=1:duration=1",
-      "-frames:v", "1",
-      a
-    ])
-    doAssert code1 == 0, "testsrc render A failed: " & out1
-    # Copy A → B byte-for-byte so SSIM is exactly 1.0.
-    writeFile(b, readFile(a))
-
-    let harness = newGuiAssertHarness(a)
-    let score = visualCompareScore(harness, a, b)
-    echo &"  identical-frame SSIM: {score:.6f}"
-    check score >= 0.999
-    check visualCompare(harness, a, b, tolerance = 0.98)
-
-  test "mismatched frames score below tolerance":
-    let outDir = getTempDir() / "gui_assert_m4_ssim"
-    createDir(outDir)
-    let a = outDir / "black.png"
-    let b = outDir / "white.png"
-
-    let (out1, code1) = runFfmpegEx(@[
-      "-y", "-hide_banner", "-loglevel", "error",
-      "-f", "lavfi",
-      "-i", "color=c=black:size=320x240:d=1",
-      "-frames:v", "1",
-      a
-    ])
-    doAssert code1 == 0, "black render failed: " & out1
-    let (out2, code2) = runFfmpegEx(@[
-      "-y", "-hide_banner", "-loglevel", "error",
-      "-f", "lavfi",
-      "-i", "color=c=white:size=320x240:d=1",
-      "-frames:v", "1",
-      b
-    ])
-    doAssert code2 == 0, "white render failed: " & out2
-
-    let harness = newGuiAssertHarness(a)
-    let score = visualCompareScore(harness, a, b)
-    echo &"  black-vs-white SSIM: {score:.6f}"
-    check score < 0.98
-    check visualCompare(harness, a, b, tolerance = 0.98) == false

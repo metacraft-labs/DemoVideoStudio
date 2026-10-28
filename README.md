@@ -2,7 +2,8 @@
 
 Video editor for DemoVideoScript scenarios: edits timing and narration in abstract terms and renders narrated videos through any backend.
 
-> **Status:** ☐ Planned — design stage; no implementation yet.
+> **Status:** the editor and render pipeline have moved here from GuiAssert, with their
+> history and unchanged in behaviour; editing in scenario terms comes next.
 
 DemoVideoStudio edits a [DemoVideoScript](https://github.com/metacraft-labs/DemoVideoScript)
 scenario's timing and presentation — pacing, narration, captions, callouts, presenter
@@ -10,6 +11,33 @@ overlay — in terms of the scenario's steps rather than absolute timestamps, an
 into a narrated video by running it through a project's page objects on a chosen backend.
 Several backend flavours can be loaded at once and switched between instantly. Rendering is
 also available headless, for CI and documentation builds.
+
+## What is here
+
+| Module (`src/demo_video_studio/`) | |
+|---|---|
+| `editor_backend`, `editor-web/` | the timeline editor: an HTTP surface and its web UI, with a three-tier preview cache |
+| `media` | composition: ffmpeg filter graphs for captions, overlays and the presenter |
+| `speech_synthesis`, `speech_synth` | narration, through provider plugins (macOS `say` built in) |
+| `talking_head`, `avatar_track`, `emotive` | the presenter overlay and its provider contract |
+| `artifact_project` | the per-stage artifact layout and its staleness rules |
+| `storyboard` | a script from a goal |
+| `parser`, `driver` | the keyframe-script format the editor edits today, and its driver |
+
+Capture, OCR, image math and the PTY stay in [GuiAssert](https://github.com/metacraft-labs/GuiAssert),
+which this repository depends on. Narration and the presenter are optional: a silent
+render needs no provider and no network.
+
+## Developing
+
+GuiAssert is expected at `../GuiAssert` (or `GUI_ASSERT_SRC`), at the commit in
+`.github/sibling-repos`.
+
+| Recipe | Does |
+|---|---|
+| `just test` | the moved suites, with a real ffmpeg |
+| `just lint` | `nim check` of every suite, `nixfmt` |
+| `python3 tests/mutation/run-dvs8-mutations.py` | planted defects in the moved code must turn the suites red |
 
 ## License
 

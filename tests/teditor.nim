@@ -22,8 +22,8 @@ import std/[algorithm, asyncdispatch, httpclient, json, monotimes, os,
             osproc, sequtils, strformat, strtabs, strutils, streams, times,
             unittest]
 
-import ../src/gui_assert/parser
-import ../src/gui_assert/editor_backend
+import ../src/demo_video_studio/parser
+import ../src/demo_video_studio/editor_backend
 
 # ---------------------------------------------------------------------------
 # ffmpeg discovery (copied from tmedia.nim — the editor backend needs the

@@ -2,7 +2,7 @@
 ## frame over a real TCP socket to a test listener.
 
 import std/[asyncdispatch, asyncnet, json, net, strutils, unittest]
-import ../src/gui_assert/driver
+import ../src/demo_video_studio/driver
 
 proc pickFreePort(): Port =
   let s = newSocket()

@@ -6,9 +6,9 @@
 
 import std/[json, options, os, strutils, tables, unittest]
 
-import ../src/gui_assert/parser
-import ../src/gui_assert/avatar_track
-import ../src/gui_assert/artifact_project
+import ../src/demo_video_studio/parser
+import ../src/demo_video_studio/avatar_track
+import ../src/demo_video_studio/artifact_project
 
 # A minimal script with two narrated keyframes and a 2-keyframe
 # avatar track.  All later tests are built against derivatives of
