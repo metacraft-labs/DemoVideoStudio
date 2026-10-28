@@ -23,7 +23,7 @@ flavour_env := "DVS_STUDIO_BIN=" + build_dir + "/bin/dvs-studio DVS_TERMINAL_HOS
 # tflavours observes the studio through /proc (its read counters, its
 # processes): Linux only
 linux_suites := if os() == "linux" { "tflavours" } else { "" }
-suites := "tscenario_editor tscenario_ui trender " + linux_suites + " tplugin_contract tsilent_render tparser tmedia tspeech_synthesis ttalking_head temotive tdiscovery tartifact_project tartifact_pipeline teditor tdriver_browser tdriver_vscode tdriver_storyboard"
+suites := "tscenario_editor tscenario_ui trender " + linux_suites + " topen tconvert tplugin_contract tsilent_render tparser tmedia tspeech_synthesis ttalking_head temotive tdiscovery tartifact_project tartifact_pipeline teditor tdriver_browser tdriver_vscode tdriver_storyboard"
 
 # The moved suites, unchanged in what they check: composition through a real
 # ffmpeg, the editor's HTTP surface, the artifact pipeline, the keyframe-script

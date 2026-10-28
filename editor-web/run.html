@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Test Run</title>
+    <link rel="stylesheet" href="scenario.css" />
+    <link rel="stylesheet" href="run.css" />
+  </head>
+  <body>
+    <header>
+      <h1 id="title">Run</h1>
+      <span id="flavour"></span>
+      <span id="outcome" role="status"></span>
+      <span class="readonly">read-only</span>
+    </header>
+    <main>
+      <section aria-label="Steps">
+        <ol id="steps"></ol>
+      </section>
+      <section id="side">
+        <h2>
+          Step <span id="sel-path">—</span> <small id="sel-status"></small>
+        </h2>
+        <p id="sel-message"></p>
+        <div id="stills"></div>
+        <h2>Observed state</h2>
+        <pre id="state"></pre>
+        <h2>Failure</h2>
+        <ul id="failure"></ul>
+      </section>
+    </main>
+    <script src="run.js"></script>
+  </body>
+</html>

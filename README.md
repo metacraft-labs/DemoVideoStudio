@@ -3,9 +3,11 @@
 Video editor for DemoVideoScript scenarios: edits timing and narration in abstract terms and renders narrated videos through any backend.
 
 > **Status:** scenario files are edited in scenario terms (`dvs-studio edit`), rendered
-> through a pack on a chosen backend (`dvs-studio render`), and shown on several flavours at
-> once; opening test-run recordings and converting keyframe scripts comes next. The
-> keyframe-script editor and render pipeline moved here from GuiAssert, with their history.
+> through a pack on a chosen backend (`dvs-studio render`) and shown on several flavours at
+> once; test-run recordings open read-only (`dvs-studio open`), and keyframe scripts convert
+> to scenarios (`dvs-studio convert`). The keyframe-script editor and render pipeline moved
+> here from GuiAssert, with their history; the keyframe format retires once its last
+> scripts are converted.
 
 DemoVideoStudio edits a [DemoVideoScript](https://github.com/metacraft-labs/DemoVideoScript)
 scenario's timing and presentation — pacing, narration, captions, callouts, presenter
@@ -22,12 +24,14 @@ also available headless, for CI and documentation builds.
 | `scenario_editor`, `editor-web/scenario.*` | the scenario editor's HTTP surface and page, and target picking through a flavour's `hit`                                                                                 |
 | `render`                                   | a render: the run on a flavour, narration, captions, callouts and the presenter placed on its step offsets, composition                                                   |
 | `flavour`, `resident`                      | flavours loaded at once: each one's render in memory and its live session, a step-position playhead they follow in lockstep, a memory budget that asks rather than evicts |
+| `run_view`, `editor-web/run.*`             | a test-run recording opened read-only: its steps with results, the failing step, stills and observed state                                                                |
+| `convert`                                  | a keyframe script as a scenario for a pack, with a report of every keyframe it could not express                                                                          |
 | `editor_backend`, `editor-web/`            | the timeline editor: an HTTP surface and its web UI, with a three-tier preview cache                                                                                      |
 | `media`                                    | composition: ffmpeg filter graphs for captions, overlays and the presenter                                                                                                |
 | `speech_synthesis`, `speech_synth`         | narration, through provider plugins (macOS `say` built in)                                                                                                                |
 | `talking_head`, `avatar_track`, `emotive`  | the presenter overlay and its provider contract                                                                                                                           |
 | `artifact_project`                         | the per-stage artifact layout and its staleness rules                                                                                                                     |
-| `storyboard`                               | a script from a goal                                                                                                                                                      |
+| `storyboard`                               | a scenario from a goal: the recipe's script, converted for a pack                                                                                                         |
 | `parser`, `driver`                         | the keyframe-script format the editor edits today, and its driver                                                                                                         |
 
 ### The provider plugin contract
@@ -70,6 +74,18 @@ The playhead is a step (double-click one on the timeline); every live session fo
 A memory budget being exceeded is reported with the flavours that could be unloaded;
 nothing is unloaded without asking.
 
+## A failing run, and old keyframe scripts
+
+`dvs-studio open <run-dir>` shows a DemoVideoScript run recording read-only on
+<http://127.0.0.1:7701/>: its steps with their results, the failing step selected, and that
+step's stills and observed state.
+
+`dvs-studio convert <script.yaml> --pack <pack.yaml> --out <scenario.yaml>` turns a keyframe
+script into a scenario. Targets become locators only where the pack resolves them (or
+`--target LEGACY=LOCATOR` maps them); every keyframe it could not express is reported with
+the reason, and the command exits 1. `dvs-studio storyboard "<goal>"` writes the storyboard
+engine's script for a goal as a scenario the same way.
+
 ## Rendering a scenario
 
 ```sh
@@ -99,6 +115,7 @@ browsers, `agg` and the pinned font.
 | `just mutate dvs10`                            | planted defects in the scenario editor must turn its suite red                             |
 | `just mutate dvs11`                            | planted defects in the render must turn its suite red                                      |
 | `just mutate dvs12`                            | planted defects in the resident flavours must turn their suite red                         |
+| `just mutate dvs13`                            | planted defects in the converter must turn its suite red                                   |
 | `just lint`                                    | `nim check` of every suite, `nixfmt`                                                       |
 | `python3 tests/mutation/run-dvs8-mutations.py` | planted defects in the moved code must turn the suites red                                 |
 | `python3 tests/mutation/run-dvs9-mutations.py` | planted defects in the plugin contract must turn its conformance suite red                 |

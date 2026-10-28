@@ -25,7 +25,10 @@
 ## All other goals fall through to the default recipe.
 
 import std/[options, strformat, strutils]
-import ./parser
+import demo_video_script/model
+import ./[parser, convert]
+
+export convert
 
 const
   DefaultStoryboardApp* = "app"
@@ -395,3 +398,10 @@ proc generateScriptYaml*(backend: StoryboardBackend,
     raise newException(StoryboardError,
       "Backend YAML failed validation: " & e.msg & "\n--- yaml ---\n" & yaml)
   result = yaml
+
+proc generateScenario*(backend: StoryboardBackend; req: StoryboardRequest; pk: Pack;
+                       opts: ConvertOptions = ConvertOptions()): Conversion =
+  ## The storyboard as a scenario for the pack `pk` (DemoVideoStudio-Editor §6):
+  ## the backend's keyframe script, converted. What the pack cannot express is
+  ## in the conversion's report, never guessed.
+  convertScript(parseScriptYaml(generateScriptYaml(backend, req)), pk, opts)

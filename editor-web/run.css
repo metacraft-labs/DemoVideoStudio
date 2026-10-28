@@ -1,0 +1,48 @@
+#steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 13px;
+}
+#steps li {
+  padding: 4px 8px;
+  border-left: 4px solid var(--line);
+  margin-bottom: 2px;
+  cursor: pointer;
+}
+#steps li.passed {
+  border-left-color: #3a9a5b;
+}
+#steps li.failed {
+  border-left-color: var(--error);
+  color: var(--error);
+}
+#steps li.not-run {
+  color: var(--muted);
+}
+#steps li.selected {
+  outline: 2px solid var(--accent);
+}
+.readonly {
+  color: var(--muted);
+  font-size: 12px;
+}
+#stills img {
+  max-width: 100%;
+  display: block;
+  margin-bottom: 6px;
+  background: #000;
+}
+#stills pre,
+#state {
+  font:
+    12px/1.2 ui-monospace,
+    monospace;
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 6px;
+  overflow-x: auto;
+}
+#sel-message {
+  color: var(--error);
+}

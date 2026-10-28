@@ -1,0 +1,13 @@
+# dvs13 mutation results — 2026-10-29 00:43:13 +0200
+# kill command: bash -c nim c --hints:off --warnings:off --passC:-w --threads:on --nimcache:$BUILD_DIR/nc-cli -o:$BUILD_DIR/dvs-studio src/dvs_studio.nim && DVS_STUDIO_BIN=$BUILD_DIR/dvs-studio nim c -r --hints:off --warnings:off --passC:-w --threads:on --nimcache:$BUILD_DIR/nc -o:$BUILD_DIR/tconvert tests/tconvert.nim
+
+KILLED   C1       30.4s  a converter that guesses where a coordinate pointed
+           |   [FAILED] the command line writes the scenario and the report
+           |   [OK] the storyboard emits a scenario for a pack
+           | Error: execution of an external program failed: '$BUILD_DIR/tconvert'
+KILLED   C2       14.2s  an unexpressible keyframe dropped from the report
+           |   [FAILED] the command line writes the scenario and the report
+           |   [OK] the storyboard emits a scenario for a pack
+           | Error: execution of an external program failed: '$BUILD_DIR/tconvert'
+
+2/2 killed, 0 survived

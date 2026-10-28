@@ -1,0 +1,73 @@
+# A keyframe script in the format the studio used to edit (parser.nim): every
+# legacy action, for the converter's suite.
+metadata:
+  title: "Notes tour, the old way"
+  resolution: "1280x720"
+  fps: 30
+timeline:
+  - time: 0.0
+    action: launch_app
+    narration: "The notes application."
+  - time: 3.0
+    action: move_cursor
+    params:
+      target: "search-field"
+  - time: 6.0
+    action: click
+    narration: "Search for a note."
+  - time: 9.0
+    action: type_text
+    params:
+      text: "rec"
+      wpm: 100
+  - time: 12.0
+    action: hot_key
+    params:
+      keys: ["Cmd", "A"]
+  - time: 15.0
+    action: hot_key
+    params:
+      keys: ["Escape"]
+  - time: 18.0
+    action: scroll
+    params:
+      target: "note-list"
+      deltaY: 300
+  - time: 21.0
+    action: click
+    params:
+      target: "recipes-note"
+      button: "right"
+  - time: 24.0
+    action: navigate
+    params:
+      url: "http://localhost/"
+  - time: 27.0
+    action: open_file
+    params:
+      path: "notes.txt"
+  - time: 30.0
+    action: set_breakpoint
+    params:
+      line: 8
+  - time: 33.0
+    action: step_over
+    narration: "This narration moves on."
+  - time: 36.0
+    action: focus_window
+    params:
+      window: "editor"
+  - time: 39.0
+    action: move_cursor
+    params:
+      target: "editor.line(8)"
+  - time: 42.0
+    action: click
+    params:
+      x: 100
+      y: 200
+  - time: 45.0
+    action: rename_note
+    params:
+      title: "Recipes"
+      to: "Cooking"
