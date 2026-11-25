@@ -141,6 +141,30 @@ suite "rendering through a pack on a chosen backend":
     check heard >= narration.startMs / 1000 - 0.05
     check heard <= narration.startMs / 1000 + 0.4
 
+  test "a recorded run is composed again without running the scenario":
+    # The terminal flavour's run from the first case, moved out of its
+    # render's work directory; the flavour's command does not exist, so
+    # nothing can have run.
+    let kept = work / "kept-run"
+    copyDir(work / "terminal.mp4.render" / "run", kept)
+    let doc = loadScenarioDoc(tour, packPath)
+    let outFile = work / "again.mp4"
+    let r = renderScenario(doc, Flavour(name: "terminal", command: work / "no-such-host",
+                                        virtualTiming: true),
+                           RenderOptions(outPath: outFile, fromRun: kept))
+    checkpoint $reportJson(r)
+    check r.ok
+    check fileExists(outFile)
+    var narration: Placement
+    for p in r.placements:
+      if p.kind == "narration": narration = p
+    check abs(narration.startMs - expectedNarrationMs(r.runDir, true)) < 1.0
+    # a run directory inside the render's own work directory is refused:
+    # the render would clear it first
+    expect RenderError:
+      discard renderScenario(doc, terminal, RenderOptions(outPath: outFile,
+        fromRun: outFile & ".render" / "run"))
+
   test "a run that fails renders nothing and reports the failing step":
     let doc = loadScenarioDoc(broken, packPath)
     let outFile = work / "broken.mp4"

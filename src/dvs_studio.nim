@@ -53,7 +53,7 @@ const Usage = """usage:
   dvs-studio render <scenario.yaml> --pack <pack.yaml> --backend NAME=COMMAND
       [--virtual-timing] --out <video.mp4> [--font-dir DIR] [--font-family F] [--font-size PX]
       [--speech PROVIDER|none] [--voice NAME=VOICE]... [--avatar <video>] [--json]
-      [--step-cap MS] [--settle-timeout MS] [--stage-timeout MS]
+      [--step-cap MS] [--settle-timeout MS] [--stage-timeout MS] [--from-run DIR]
 """
 
 proc usage(msg = "") {.noreturn.} =
@@ -128,6 +128,7 @@ proc cmdRender(args: seq[string]) =
       of "step-cap": opts.stepCapMs = parseFloat(val)
       of "settle-timeout": opts.settleTimeoutMs = parseInt(val)
       of "stage-timeout": opts.stageTimeoutMs = parseInt(val)
+      of "from-run": opts.fromRun = val
       of "json": asJson = true
       of "voice":
         let eq = val.find('=')

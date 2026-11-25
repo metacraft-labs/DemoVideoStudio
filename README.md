@@ -106,7 +106,9 @@ own pace (the input's pointer motion and the change it caused) and the rest is s
 the other half. A real-time recording is retimed with ffmpeg's `setpts`, a terminal cast on
 its virtual timeline; narration, captions and callouts follow. Every frame shown is still the
 one run's, in its order. `--settle-timeout MS` and `--stage-timeout MS` give the run a lane's
-limits.
+limits. `--from-run DIR` composes a run already recorded (a render's `run/`, moved out of its
+work directory) again, without running the scenario: its media is the one its manifest names,
+or the `session.*` beside it.
 
 ## Developing
 

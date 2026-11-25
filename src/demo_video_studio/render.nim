@@ -49,6 +49,11 @@ type
       ## content from the one run; only the time a screen stood still is cut.
     settleTimeoutMs*, stageTimeoutMs*: int
       ## The run's limits, as a lane gives them (0 = the runner's defaults).
+    fromRun*: string
+      ## A run directory a render (or `dvs run --record always`) already
+      ## recorded: composed again, without running the scenario. Its media is
+      ## the one its manifest names, or the `session.*` beside it when the
+      ## manifest names none (a backend stopped while it was still writing).
 
   Placement* = object
     kind*: string             ## narration, caption, callout, avatar
@@ -302,21 +307,35 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
   ## does not pass produces no video (and removes an earlier one at that path).
   result.flavour = flavour.name
   let work = (if opts.workDir != "": opts.workDir else: opts.outPath & ".render")
+  if opts.fromRun != "" and absolutePath(opts.fromRun).startsWith(absolutePath(work) & "/"):
+    raise renderError("--from-run " & opts.fromRun & " is inside the render's own work " &
+                      "directory, which a render starts by clearing: move it out first")
   removeDir(work)
   createDir(work)
   let runDir = work / "run"
   result.runDir = runDir
   if fileExists(opts.outPath): removeFile(opts.outPath)
   # 1. the run
-  let b = spawnJsonLinesBackend(flavour.command, flavour.args, name = flavour.name)
   var res: RunResult
-  try:
-    res = runScenario(doc.scenario, doc.pack, b, RunOptions(
-      mode: (if flavour.virtualTiming: tmVirtual else: tmRealistic), record: rpAlways,
-      runDir: runDir, scenarioDir: doc.path.parentDir,
-      settleTimeoutMs: opts.settleTimeoutMs, stageTimeoutMs: opts.stageTimeoutMs))
-  finally:
-    b.close()
+  if opts.fromRun != "":
+    # composed again from a recorded run: a copy, the original left as it is
+    if not fileExists(opts.fromRun / "manifest.json"):
+      raise renderError(opts.fromRun & " holds no run (no manifest.json)")
+    copyDir(opts.fromRun, runDir)
+    res.outcome = roPassed
+    for s in parseFile(runDir / "manifest.json"){"steps"}.getElems:
+      if s{"status"}.getStr != "passed":
+        raise renderError("the run in " & opts.fromRun & " did not pass: step " &
+                          s{"path"}.getStr & " is " & s{"status"}.getStr)
+  else:
+    let b = spawnJsonLinesBackend(flavour.command, flavour.args, name = flavour.name)
+    try:
+      res = runScenario(doc.scenario, doc.pack, b, RunOptions(
+        mode: (if flavour.virtualTiming: tmVirtual else: tmRealistic), record: rpAlways,
+        runDir: runDir, scenarioDir: doc.path.parentDir,
+        settleTimeoutMs: opts.settleTimeoutMs, stageTimeoutMs: opts.stageTimeoutMs))
+    finally:
+      b.close()
   result.outcome = $res.outcome
   let manifestPath = runDir / "manifest.json"
   var clock = MediaClock(virtual: flavour.virtualTiming, cap: opts.stepCapMs)
@@ -333,6 +352,12 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
     for f in m{"media"}.getElems:
       if f.getStr.endsWith(".cast") or f.getStr.endsWith(".webm") or f.getStr.endsWith(".mp4"):
         media = f.getStr
+    if opts.fromRun != "":
+      # the copy's own media, under its new directory
+      if media != "": media = runDir / media.extractFilename
+      if media == "" or not fileExists(media):
+        for name in ["session.cast", "session.webm", "session.mp4"]:
+          if fileExists(runDir / name): media = runDir / name
   let videoJson = runDir / "session.video.json"
   if fileExists(videoJson): clock.leadMs = parseFile(videoJson){"leadMs"}.getFloat
   clock.layOut()
