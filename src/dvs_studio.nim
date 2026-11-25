@@ -23,6 +23,8 @@
 ## `render` runs the scenario on the backend with recording on and composes the
 ## video (DemoVideoStudio-Editor §4). `--virtual-timing`: a terminal flavour,
 ## recorded fast and timed at render, rasterised through the pinned font.
+## `--step-cap MS`: no step shown longer than MS, the time a screen stood still
+## past it cut out of the one run's recording (README, "Rendering a scenario").
 ##
 ## `open` shows a test-run recording read-only: its steps with their results,
 ## the failing step selected, its stills and observed state (§5.6).
@@ -51,6 +53,7 @@ const Usage = """usage:
   dvs-studio render <scenario.yaml> --pack <pack.yaml> --backend NAME=COMMAND
       [--virtual-timing] --out <video.mp4> [--font-dir DIR] [--font-family F] [--font-size PX]
       [--speech PROVIDER|none] [--voice NAME=VOICE]... [--avatar <video>] [--json]
+      [--step-cap MS] [--settle-timeout MS] [--stage-timeout MS]
 """
 
 proc usage(msg = "") {.noreturn.} =
@@ -122,6 +125,9 @@ proc cmdRender(args: seq[string]) =
       of "font-size": opts.fontSize = parseInt(val)
       of "speech": opts.speech = val
       of "avatar": opts.avatarVideo = val
+      of "step-cap": opts.stepCapMs = parseFloat(val)
+      of "settle-timeout": opts.settleTimeoutMs = parseInt(val)
+      of "stage-timeout": opts.stageTimeoutMs = parseInt(val)
       of "json": asJson = true
       of "voice":
         let eq = val.find('=')

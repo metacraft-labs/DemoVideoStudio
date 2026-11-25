@@ -116,6 +116,31 @@ suite "rendering through a pack on a chosen backend":
   test "the Playwright flavour: real video, narrated on the same step":
     checkRender(playwright, "playwright")
 
+  test "a step cap: no step is shown longer than the cap, the narration stays on its step":
+    # A real-time flavour: the cap cuts the time a screen stood still out of
+    # the recording itself (ffmpeg `setpts`), and every placement follows.
+    let doc = loadScenarioDoc(tour, packPath)
+    let outFile = work / "capped.mp4"
+    let r = renderScenario(doc, playwright, RenderOptions(outPath: outFile, stepCapMs: 300))
+    checkpoint $reportJson(r)
+    check r.ok
+    for path, sp in r.stepsMs:
+      if '.' in path: check sp[1] - sp[0] <= 300.5
+    let duration = parseFloat(ffprobe(@["-v", "error", "-show_entries", "format=duration",
+                                        "-of", "default=nw=1:nk=1", outFile]).strip)
+    check duration * 1000 >= r.stepsMs["7"][1]
+    # the video was shortened, not padded: it ends within a second of the
+    # last step (plus the composition's half-second tail)
+    check duration * 1000 <= r.stepsMs["7"][1] + 1600
+    var narration: Placement
+    for p in r.placements:
+      if p.kind == "narration": narration = p
+    check abs(narration.startMs - r.stepsMs["2.1"][0]) < 1.0
+    let heard = firstSoundSeconds(outFile)
+    checkpoint "narration placed at " & $narration.startMs & " ms; first sound at " & $heard & " s"
+    check heard >= narration.startMs / 1000 - 0.05
+    check heard <= narration.startMs / 1000 + 0.4
+
   test "a run that fails renders nothing and reports the failing step":
     let doc = loadScenarioDoc(broken, packPath)
     let outFile = work / "broken.mp4"

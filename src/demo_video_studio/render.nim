@@ -40,6 +40,15 @@ type
       ## production, not for an engine)
     avatarVideo*: string      ## the presenter's source video; "" = no presenter
     canvasWidth*, canvasHeight*: int
+    stepCapMs*: float
+      ## The longest a step is shown for; 0 = as long as it took. A step that
+      ## took longer — a wait on a loaded machine, a backend reading a window
+      ## by OCR — keeps its first half of this at its own pace (an input's
+      ## pointer motion, the change it caused) and the rest is sped up to fit
+      ## the other half. What is shown is still every frame's order and
+      ## content from the one run; only the time a screen stood still is cut.
+    settleTimeoutMs*, stageTimeoutMs*: int
+      ## The run's limits, as a lane gives them (0 = the runner's defaults).
 
   Placement* = object
     kind*: string             ## narration, caption, callout, avatar
@@ -64,6 +73,7 @@ type
   MStep = object
     path: string
     startMs, endMs, vStart, vEnd: float
+    pStart, pEnd: float       ## its span in the video, once the cap is applied
 
 proc renderError(msg: string): ref RenderError = newException(RenderError, msg)
 
@@ -78,26 +88,76 @@ type MediaClock = object
   recStart: float             ## the runner's ms when recording began
   leadMs: float               ## how far into the video recording began
   virtual: bool
+  cap: float                  ## `RenderOptions.stepCapMs`
+
+proc capped*(d, cap: float): float =
+  ## How long a step that took `d` is shown for under `cap` (0: no cap).
+  if cap <= 0 or d <= cap: d else: cap
+
+proc cappedOffset*(u, d, cap: float): float =
+  ## Where the moment `u` into a step that took `d` is shown, under `cap`:
+  ## the first half of the cap at the step's own pace, the rest sped up.
+  if cap <= 0 or d <= cap: return u
+  let keep = cap / 2
+  if u <= keep: u
+  else: keep + (min(u, d) - keep) * (cap - keep) / (d - keep)
+
+proc baseSpan(c: MediaClock; s: MStep): (float, float) =
+  ## A step's span on the run's own timeline: virtual or real.
+  if c.virtual: (s.vStart, s.vEnd) else: (s.startMs, s.endMs)
+
+proc layOut(c: var MediaClock) =
+  ## Each step's span in the video: the gaps between steps as they were, each
+  ## step as long as `capped` says.
+  if c.steps.len == 0: return
+  let first = c.steps[0]
+  let pre = c.leadMs + first.startMs - c.recStart
+  var cursor = pre + (if c.virtual: first.vStart else: 0.0)
+  for k in 0 ..< c.steps.len:
+    let (b0, b1) = c.baseSpan(c.steps[k])
+    if k > 0:
+      let (_, pb1) = c.baseSpan(c.steps[k - 1])
+      cursor += max(0.0, b0 - pb1)
+    c.steps[k].pStart = cursor
+    cursor += capped(b1 - b0, c.cap)
+    c.steps[k].pEnd = cursor
 
 proc mediaMs(c: MediaClock; ms: float): float =
   ## The video time of the runner's `ms`.
-  if not c.virtual or c.steps.len == 0: return c.leadMs + ms - c.recStart
+  if c.steps.len == 0 or (not c.virtual and c.cap <= 0): return c.leadMs + ms - c.recStart
   let first = c.steps[0]
-  let pre = c.leadMs + first.startMs - c.recStart
-  # before the first step: real time; the virtual timeline (which begins with
-  # the first step's lead-in) starts where the first step started
+  # before the first step: real time; the step timeline starts where the
+  # first step started
   if ms < first.startMs: return c.leadMs + ms - c.recStart
   for k, s in c.steps:
     if ms <= s.endMs:
+      let (b0, b1) = c.baseSpan(s)
       if ms >= s.startMs:
         let f = (if s.endMs > s.startMs: (ms - s.startMs) / (s.endMs - s.startMs) else: 1.0)
-        return pre + s.vStart + f * (s.vEnd - s.vStart)
+        return s.pStart + cappedOffset(f * (b1 - b0), b1 - b0, c.cap)
       # in the gap before step k
       let p = c.steps[k - 1]
       let f = (if s.startMs > p.endMs: (ms - p.endMs) / (s.startMs - p.endMs) else: 1.0)
-      return pre + p.vEnd + f * (s.vStart - p.vEnd)
+      return p.pEnd + f * (s.pStart - p.pEnd)
   let last = c.steps[^1]
-  pre + last.vEnd + (ms - last.endMs)
+  last.pEnd + (ms - last.endMs)
+
+proc retimeExpression(c: MediaClock): string =
+  ## A real-time recording's timestamps (`T`, seconds) as the video's under
+  ## the cap: every step longer than the cap loses the time `cappedOffset`
+  ## takes from it, by an ffmpeg expression for `setpts`.
+  var terms: seq[string]
+  for s in c.steps:
+    let d = s.endMs - s.startMs
+    if c.cap <= 0 or d <= c.cap: continue
+    let keep = c.cap / 2
+    let a = (c.leadMs + s.startMs - c.recStart + keep) / 1000
+    let L = (d - keep) / 1000
+    let lose = 1 - (c.cap - keep) / (d - keep)
+    terms.add "clip(T-" & formatFloat(a, ffDecimal, 4) & ",0," & formatFloat(L, ffDecimal, 4) &
+              ")*" & formatFloat(lose, ffDecimal, 6)
+  if terms.len == 0: return ""
+  "(T-" & terms.join("-") & ")/TB"
 
 proc span(c: MediaClock; path: string): (float, float) =
   ## A step's (or a beat's, or a flow call's) span in the video.
@@ -121,11 +181,23 @@ proc run(cmd: seq[string]; what: string) =
   if code != 0: raise renderError(what & " failed (" & $code & "):\n" & output)
 
 proc ffprobeDuration(path: string): float =
+  ## The media's duration in seconds. A WebM a recorder stopped without
+  ## finalising (Playwright's Electron recordings) carries none in its
+  ## header (`N/A`): then it is its last video packet's time.
   let probe = getEnv("FFPROBE_BIN", findExe("ffprobe"))
   let (o, code) = execCmdEx(quoteShellCommand(@[probe, "-v", "error", "-show_entries",
     "format=duration", "-of", "default=nw=1:nk=1", path]))
   if code != 0: raise renderError("ffprobe " & path & ": " & o)
-  parseFloat(o.strip)
+  try: return parseFloat(o.strip)
+  except ValueError: discard
+  let (p, pcode) = execCmdEx(quoteShellCommand(@[probe, "-v", "error", "-select_streams", "v:0",
+    "-show_entries", "packet=pts_time", "-of", "csv=p=0", path]))
+  if pcode != 0: raise renderError("ffprobe " & path & ": " & p)
+  result = -1.0
+  for l in p.splitLines:
+    try: result = max(result, parseFloat(l.strip.strip(chars = {','})))
+    except ValueError: discard
+  if result < 0: raise renderError("ffprobe " & path & ": no duration and no video packets")
 
 proc videoSize(path: string): (int, int) =
   let probe = getEnv("FFPROBE_BIN", findExe("ffprobe"))
@@ -135,13 +207,15 @@ proc videoSize(path: string): (int, int) =
   let p = o.strip.split(',')
   (parseInt(p[0]), parseInt(p[1]))
 
-proc toMp4(src, dst: string; minSeconds: float) =
+proc toMp4(src, dst: string; minSeconds: float; retime = ""; removedMs = 0.0) =
   ## The recording as an H.264 video at least `minSeconds` long (its last frame
-  ## held), even-sized for yuv420p.
-  let have = ffprobeDuration(src)
+  ## held), even-sized for yuv420p; `retime` (a `setpts` expression) moves its
+  ## frames first, shortening it by `removedMs`.
+  let have = ffprobeDuration(src) - removedMs / 1000
   let pad = max(0.0, minSeconds - have)
   run(@[resolveFfmpegBinary(), "-y", "-hide_banner", "-loglevel", "error", "-i", src,
-        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30,tpad=stop_mode=clone:stop_duration=" &
+        "-vf", (if retime.len > 0: "setpts='" & retime & "'," else: "") &
+          "scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30,tpad=stop_mode=clone:stop_duration=" &
           formatFloat(pad + 0.5, ffDecimal, 3),
         "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-an", dst],
       "converting the recording")
@@ -239,12 +313,13 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
   try:
     res = runScenario(doc.scenario, doc.pack, b, RunOptions(
       mode: (if flavour.virtualTiming: tmVirtual else: tmRealistic), record: rpAlways,
-      runDir: runDir, scenarioDir: doc.path.parentDir))
+      runDir: runDir, scenarioDir: doc.path.parentDir,
+      settleTimeoutMs: opts.settleTimeoutMs, stageTimeoutMs: opts.stageTimeoutMs))
   finally:
     b.close()
   result.outcome = $res.outcome
   let manifestPath = runDir / "manifest.json"
-  var clock = MediaClock(virtual: flavour.virtualTiming)
+  var clock = MediaClock(virtual: flavour.virtualTiming, cap: opts.stepCapMs)
   var media = ""
   if fileExists(manifestPath):
     let m = parseFile(manifestPath)
@@ -260,6 +335,7 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
         media = f.getStr
   let videoJson = runDir / "session.video.json"
   if fileExists(videoJson): clock.leadMs = parseFile(videoJson){"leadMs"}.getFloat
+  clock.layOut()
   # 2. a run that did not pass is shown as a failure, never rendered past
   if res.outcome != roPassed:
     result.ok = false
@@ -325,7 +401,12 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
     retimeCast(media, timed, clock)
     rasteriseCast(timed, base, opts, endMs / 1000 + 0.5)
   else:
-    toMp4(media, base, endMs / 1000 + 0.5)
+    var removed = 0.0
+    if not clock.virtual:
+      for s in clock.steps:
+        removed += (s.endMs - s.startMs) - capped(s.endMs - s.startMs, clock.cap)
+    toMp4(media, base, endMs / 1000 + 0.5,
+          retime = (if clock.virtual: "" else: clock.retimeExpression), removedMs = removed)
   # callouts, at their target's geometry when the run noted it
   let (bw, bh) = videoSize(base)
   let cw = (if opts.canvasWidth > 0: opts.canvasWidth else: 1920)
