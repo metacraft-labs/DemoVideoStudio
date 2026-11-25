@@ -284,9 +284,16 @@ proc presenterComposeOptions*(): ComposeOptions =
 #
 # ffmpeg's filter graph syntax is famously irritating. Inside a filter
 # argument we must escape backslashes, single quotes, colons, percents, and
-# any other separator-like character. The standard recipe is to wrap the
-# value in single quotes and escape internal single quotes as `\''`, then
-# additionally escape backslashes themselves.
+# any other separator-like character. A value is wrapped in single quotes and
+# read twice: first by the filter graph, where a quoted run is literal and
+# `\` escapes one character outside quotes, then by the option parser, which
+# reads `\` the same way. So a single quote closes the quoted run, appears
+# as `\\\'` (the graph leaves `\'`, the option parser `'`) and reopens it.
+# Written as the shell's `'\''` instead, the option parser met a bare `'` and
+# read the rest of the clause — `:fontsize=…:enable=…` — as the caption's text
+# ("Step over the module's definitions" drew its own options). A percent is
+# read a third time, by drawtext's own expansion, which wants `\%`: so it is
+# `\\%` here.
 
 proc escapeDrawtext*(s: string): string =
   ## Escape a string for inclusion as a `drawtext` option value, wrapped
@@ -295,9 +302,9 @@ proc escapeDrawtext*(s: string): string =
   for ch in s:
     case ch
     of '\\': result.add("\\\\")
-    of '\'': result.add("'\\''")
+    of '\'': result.add("'\\\\\\''")
     of ':':  result.add("\\:")
-    of '%':  result.add("\\%")
+    of '%':  result.add("\\\\%")
     else:    result.add(ch)
 
 proc buildDrawtextFilter(c: Caption, opts: ComposeOptions): string =
