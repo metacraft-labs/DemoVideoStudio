@@ -113,6 +113,41 @@ limits. `--from-run DIR` composes a run already recorded (a render's `run/`, mov
 work directory) again, without running the scenario: its media is the one its manifest names,
 or the `session.*` beside it.
 
+### Crisp video, the page composite, and asciinema
+
+A render keeps the screencast lossless until one final encode
+(DemoVideoScript-pm `spec/Codec-Study.md`):
+
+- the recording, and every intermediate, is lossless RGB;
+- the canvas is the recording's own size (`--canvas WxH` to change it);
+- a presenter is overlaid in 4:4:4.
+
+`--codec NAME` chooses the final encode: `h264`, `h264-444` (the default,
+H.264 High 4:4:4 CRF 18), `hevc`, `hevc-444`, `vp9`, `vp9-444`, `av1`,
+`av1-444` or `lossless`.
+
+`--html DIR` also writes the render as a page that composites while it plays:
+
+- the screencast, encoded once per `--page-codecs` entry (default
+  `av1-444,h264-444`, as typed `<source>`s);
+- the presenter as its own video on the screencast's clock;
+- the captions as cues;
+- the callouts as HTML.
+
+Open `DIR/index.html`; it works from `file://`.
+
+A presenter comes from the narration:
+
+1. `--narration-out FILE.wav` keeps the narration track.
+2. A talking-head plugin turns that track into a video.
+3. `--avatar` takes the video. Without keyframes it is placed as a circle,
+   bottom right.
+
+`--cast-out FILE.cast` writes a terminal flavour's asciicast on the video's
+timeline. `dvs-studio cast-page FILE.cast --out PAGE.html` turns it into one
+self-contained page played by asciinema-player (inlined, from the flake's
+pinned release).
+
 ## Developing
 
 The siblings in `.github/sibling-repos` are expected next to this checkout (or at

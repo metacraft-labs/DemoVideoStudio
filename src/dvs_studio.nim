@@ -33,7 +33,8 @@
 ## `--narration-out`: also keep the narration track, which a talking-head
 ## plugin turns into the `--avatar` video. `--html DIR`: also write the render
 ## as a page composited while it plays (screencast, presenter, WebVTT
-## captions, HTML callouts). `--cast-out`: a terminal flavour's asciicast v2 on
+## captions, HTML callouts); `--page-codecs` names the page's encodes, in the
+## order it offers them (default av1-444,h264-444). `--cast-out`: a terminal flavour's asciicast v2 on
 ## the video's timeline.
 ##
 ## `cast-page` writes an asciicast as one self-contained page played by
@@ -68,7 +69,7 @@ const Usage = """usage:
       [--virtual-timing] --out <video.mp4> [--font-dir DIR] [--font-family F] [--font-size PX]
       [--speech PROVIDER|none] [--voice NAME=VOICE]... [--avatar <video>] [--json]
       [--step-cap MS] [--settle-timeout MS] [--stage-timeout MS] [--from-run DIR]
-      [--codec NAME] [--canvas WxH] [--narration-out <wav>] [--html DIR] [--cast-out <cast>]
+      [--codec NAME] [--canvas WxH] [--narration-out <wav>] [--html DIR] [--page-codecs A,B] [--cast-out <cast>]
   dvs-studio cast-page <cast> --out <page.html> [--title T] [--player DIR]
 """
 
@@ -150,6 +151,11 @@ proc cmdRender(args: seq[string]) =
         except ValueError as e: usage(e.msg)
       of "narration-out": opts.narrationOut = val
       of "html": opts.htmlDir = val
+      of "page-codecs":
+        for c in val.split(','):
+          try: discard videoCodecArgs(c.strip)
+          except ValueError as e: usage(e.msg)
+          opts.pageCodecs.add c.strip
       of "cast-out": opts.castOut = val
       of "canvas":
         let x = val.toLowerAscii.find('x')
