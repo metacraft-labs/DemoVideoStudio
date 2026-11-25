@@ -11,7 +11,9 @@
 ##   dvs-studio render <scenario.yaml> --pack <pack.yaml> --backend NAME=COMMAND
 ##       [--virtual-timing] --out <video.mp4> [--font-dir DIR] [--font-family F]
 ##       [--font-size PX] [--speech PROVIDER|none] [--voice NAME=VOICE]…
-##       [--avatar <video>] [--json]
+##       [--avatar <video>] [--json] [--codec NAME] [--canvas WxH]
+##       [--narration-out <wav>] [--html DIR] [--cast-out <cast>]
+##   dvs-studio cast-page <cast> --out <page.html> [--title T] [--player DIR]
 ##
 ## `edit` serves the scenario editor (DemoVideoStudio-Editor §3) on
 ## http://127.0.0.1:N/ (default 7700). A flavour is a backend's JSON-lines host
@@ -25,6 +27,18 @@
 ## recorded fast and timed at render, rasterised through the pinned font.
 ## `--step-cap MS`: no step shown longer than MS, the time a screen stood still
 ## past it cut out of the one run's recording (README, "Rendering a scenario").
+## `--codec NAME`: the final encode (h264, h264-444, hevc, hevc-444, vp9,
+## vp9-444, av1, av1-444, lossless); the only lossy encode the screencast gets.
+## `--canvas WxH`: the video's size (default: the recording's own, no rescale).
+## `--narration-out`: also keep the narration track, which a talking-head
+## plugin turns into the `--avatar` video. `--html DIR`: also write the render
+## as a page composited while it plays (screencast, presenter, WebVTT
+## captions, HTML callouts). `--cast-out`: a terminal flavour's asciicast v2 on
+## the video's timeline.
+##
+## `cast-page` writes an asciicast as one self-contained page played by
+## asciinema-player (the flake's pinned release, `DVS_ASCIINEMA_PLAYER_DIR`, or
+## `--player DIR`): it plays from `file://`.
 ##
 ## `open` shows a test-run recording read-only: its steps with their results,
 ## the failing step selected, its stills and observed state (§5.6).
@@ -40,7 +54,7 @@
 
 import std/[json, os, parseopt, strutils, tables]
 import demo_video_script/pack as dvspack
-import demo_video_studio/[scenario_doc, scenario_editor, render, run_view, parser, storyboard]
+import demo_video_studio/[scenario_doc, scenario_editor, render, run_view, parser, storyboard, media, cast_page]
 
 const Usage = """usage:
   dvs-studio open <run-dir> [--port N]
@@ -54,6 +68,8 @@ const Usage = """usage:
       [--virtual-timing] --out <video.mp4> [--font-dir DIR] [--font-family F] [--font-size PX]
       [--speech PROVIDER|none] [--voice NAME=VOICE]... [--avatar <video>] [--json]
       [--step-cap MS] [--settle-timeout MS] [--stage-timeout MS] [--from-run DIR]
+      [--codec NAME] [--canvas WxH] [--narration-out <wav>] [--html DIR] [--cast-out <cast>]
+  dvs-studio cast-page <cast> --out <page.html> [--title T] [--player DIR]
 """
 
 proc usage(msg = "") {.noreturn.} =
@@ -129,6 +145,19 @@ proc cmdRender(args: seq[string]) =
       of "settle-timeout": opts.settleTimeoutMs = parseInt(val)
       of "stage-timeout": opts.stageTimeoutMs = parseInt(val)
       of "from-run": opts.fromRun = val
+      of "codec":
+        try: opts.videoArgs = videoCodecArgs(val)
+        except ValueError as e: usage(e.msg)
+      of "narration-out": opts.narrationOut = val
+      of "html": opts.htmlDir = val
+      of "cast-out": opts.castOut = val
+      of "canvas":
+        let x = val.toLowerAscii.find('x')
+        if x <= 0: usage("--canvas WxH")
+        try:
+          opts.canvasWidth = parseInt(val[0 ..< x])
+          opts.canvasHeight = parseInt(val[x + 1 .. ^1])
+        except ValueError: usage("--canvas WxH")
       of "json": asJson = true
       of "voice":
         let eq = val.find('=')
@@ -160,6 +189,30 @@ proc cmdRender(args: seq[string]) =
     for d in e.diagnostics: stderr.writeLine "  " & $d
     quit 2
   except RenderError as e:
+    stderr.writeLine "dvs-studio: " & e.msg
+    quit 2
+
+proc cmdCastPage(args: seq[string]) =
+  var castPath, outPath, title: string
+  var playerDir = defaultPlayerDir()
+  var p = initOptParser(args, shortNoVal = {'h'}, longNoVal = @["help"])
+  for kind, key, val in p.getopt():
+    case kind
+    of cmdArgument:
+      if castPath != "": usage("one cast at a time")
+      castPath = key
+    of cmdLongOption, cmdShortOption:
+      case key
+      of "out": outPath = val
+      of "title": title = val
+      of "player": playerDir = val
+      else: usage("unknown option --" & key)
+    of cmdEnd: discard
+  if castPath == "" or outPath == "": usage("cast-page needs a cast and --out")
+  try:
+    writeCastPage(castPath, outPath, playerDir, title)
+    echo "dvs-studio: wrote ", outPath
+  except CastPageError as e:
     stderr.writeLine "dvs-studio: " & e.msg
     quit 2
 
@@ -244,5 +297,6 @@ when isMainModule:
   of "open": cmdOpen(args[1 .. ^1])
   of "convert": cmdConvert(args[1 .. ^1], false)
   of "storyboard": cmdConvert(args[1 .. ^1], true)
+  of "cast-page": cmdCastPage(args[1 .. ^1])
   of "-h", "--help": (stdout.write Usage; quit 0)
   else: usage("unknown command '" & args[0] & "'")

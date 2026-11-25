@@ -200,6 +200,9 @@ type
       ## ffmpeg color expression for the caption background box (e.g.
       ## "black@0.5" for 50%-opaque black). Set to the empty string to
       ## disable the background box entirely.
+    videoArgs*: seq[string]
+      ## The final encode's codec arguments (`UiVideoArgs` by default): the
+      ## one lossy generation a composition makes.
     useAvatarAudio*: bool
       ## When `true`, the output's audio is taken directly from the
       ## avatar (input 2) — useful when the avatar source is a
@@ -241,6 +244,58 @@ proc whiteScreenChromaKey*(): ChromaKeyConfig =
                   similarity: 0.10, blend: 0.05,
                   lumaThreshold: 0.9, lumaTolerance: 0.05,
                   despill: false, despillType: "")
+
+const
+  ColorTags* = @["-colorspace", "smpte170m", "-color_primaries", "bt709",
+                 "-color_trc", "bt709", "-color_range", "tv"]
+    ## What ffmpeg's RGB to YUV conversion produces (the BT.601 matrix,
+    ## limited range, of sRGB-primaried pixels), said in the stream, so no
+    ## player has to guess it. Untagged, Safari and Chrome guessed apart.
+  UiVideoArgs* = @["-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv444p",
+                   "-g", "60"] & ColorTags
+    ## The default final encode of a UI screencast: H.264 High 4:4:4, which
+    ## keeps the chroma of coloured text that 4:2:0 halves, and plays in
+    ## Chrome and Safari (not Firefox: the page offers it AV1 first). See
+    ## DemoVideoScript-pm spec/Codec-Study.md.
+  LosslessVideoArgs* = @["-c:v", "libx264rgb", "-preset", "ultrafast", "-qp", "0"]
+    ## An intermediate: RGB, lossless, fast. A composition's inputs are kept
+    ## in it so that only the final encode loses anything.
+
+const VideoCodecNames* = ["h264", "h264-444", "hevc", "hevc-444", "vp9", "vp9-444",
+                          "av1", "av1-444", "lossless"]
+
+proc videoCodecArgs*(name: string): seq[string] =
+  ## The encoder arguments for one of the named final encodes
+  ## (`VideoCodecNames`). Every one keeps a keyframe every two seconds at
+  ## 30 fps, so a browser can seek. Raises ValueError for an unknown name.
+  case name
+  of "h264": @["-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", "-g", "60"] & ColorTags
+  of "h264-444": UiVideoArgs
+  of "hevc": @["-c:v", "libx265", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p",
+               "-tag:v", "hvc1", "-x265-params", "keyint=60:log-level=error"] & ColorTags
+  of "hevc-444": @["-c:v", "libx265", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv444p",
+                   "-tag:v", "hvc1", "-x265-params", "keyint=60:log-level=error"] & ColorTags
+  of "vp9": @["-c:v", "libvpx-vp9", "-crf", "28", "-b:v", "0", "-pix_fmt", "yuv420p",
+              "-row-mt", "1", "-deadline", "good", "-cpu-used", "2", "-g", "60"] & ColorTags
+  of "vp9-444": @["-c:v", "libvpx-vp9", "-crf", "28", "-b:v", "0", "-pix_fmt", "yuv444p",
+                  "-profile:v", "1", "-row-mt", "1", "-deadline", "good", "-cpu-used", "2", "-g", "60"] & ColorTags
+  of "av1": @["-c:v", "libsvtav1", "-crf", "28", "-preset", "6", "-pix_fmt", "yuv420p",
+              "-svtav1-params", "scm=1:keyint=60"] & ColorTags
+  of "av1-444": @["-c:v", "libaom-av1", "-crf", "28", "-b:v", "0", "-cpu-used", "6",
+                  "-row-mt", "1", "-tune-content", "screen", "-pix_fmt", "yuv444p", "-g", "60"] & ColorTags
+  of "lossless": LosslessVideoArgs
+  else: raise newException(ValueError, "unknown codec '" & name & "' (one of " &
+                           VideoCodecNames.join(", ") & ")")
+
+proc videoArgsOf(opts: ComposeOptions): seq[string] =
+  if opts.videoArgs.len > 0: opts.videoArgs else: UiVideoArgs
+
+proc audioArgsFor*(videoArgs: seq[string]): seq[string] =
+  ## AAC beside H.264/HEVC in MP4; Opus beside VP9/AV1 in WebM.
+  for a in videoArgs:
+    if a.startsWith("libvpx") or a.startsWith("libaom") or a.startsWith("libsvtav1"):
+      return @["-c:a", "libopus", "-b:a", "128k"]
+  @["-c:a", "aac", "-b:a", "192k"]
 
 proc defaultComposeOptions*(): ComposeOptions =
   ## Returns the canonical composition options used by the verification
@@ -509,13 +564,7 @@ proc buildComposeArgv*(
     "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
     "-filter_complex", filter,
     "-map", "[vout]",
-    "-map", "[aout]",
-    "-c:v", "libx264",
-    "-preset", "medium",
-    "-crf", "18",
-    "-pix_fmt", "yuv420p",
-    "-c:a", "aac",
-    "-b:a", "192k",
+    "-map", "[aout]"] & videoArgsOf(opts) & audioArgsFor(videoArgsOf(opts)) & @[
     "-movflags", "+faststart",
     "-shortest",
     outputPath
@@ -619,6 +668,11 @@ proc avatarKeyFilterExpr*(k: AvatarKeyframe): string =
   of akmLuma:
     "lumakey=threshold=" & fmtFloat(k.lumaThreshold) &
       ":tolerance=" & fmtFloat(k.lumaTolerance)
+  of akmCircle:
+    # a presenter filmed on any background, shown in a circle (the crop
+    # before it is square)
+    "geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':" &
+      "a='if(lte(hypot(X-W/2,Y-H/2),min(W,H)/2),255,0)'"
 
 proc buildAvatarTrackFilter*(track: AvatarTrack;
                              canvasWidth, canvasHeight: int;
@@ -645,7 +699,9 @@ proc buildAvatarTrackFilter*(track: AvatarTrack;
     &"scale=w='{e.dstW}':h='{e.dstH}':eval=frame:flags=bicubic," &
     "format=yuva420p," &
     keyExpr & despill & "[avatar]"
-  let ov = &"[bg][avatar]overlay=x='{e.dstX}':y='{e.dstY}':eval=frame[vout]"
+  # in 4:4:4, so the screencast under the presenter keeps its chroma until
+  # the final encode
+  let ov = &"[bg][avatar]overlay=x='{e.dstX}':y='{e.dstY}':eval=frame:format=yuv444[vout]"
   result = @[bg, av, ov].join(";")
 
 proc composeVideoWithAvatarTrack*(
@@ -653,7 +709,7 @@ proc composeVideoWithAvatarTrack*(
     track: AvatarTrack;
     canvasWidth, canvasHeight: int;
     srcWidth, srcHeight: int;
-    useAvatarAudio = true) =
+    useAvatarAudio = true; videoArgs: seq[string] = @[]) =
   ## Run ffmpeg with an animated avatar overlay derived from `track`.
   ## `srcWidth` and `srcHeight` are the pixel dimensions of the avatar
   ## source video (the caller probes them with ffprobe).
@@ -685,9 +741,8 @@ proc composeVideoWithAvatarTrack*(
     argv.add @["-map", "1:a?"]
   else:
     argv.add @["-map", "0:a?"]
-  argv.add @[
-    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "192k",
+  let vargs = if videoArgs.len > 0: videoArgs else: UiVideoArgs
+  argv.add vargs & audioArgsFor(vargs) & @[
     "-movflags", "+faststart",
     "-shortest",
     outputPath
@@ -791,8 +846,7 @@ proc buildSilentComposeArgv*(
     "-filter_complex", video,
     "-map", "[vout]",
     "-map", "1:a",
-    "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "192k",
+    ] & videoArgsOf(opts) & audioArgsFor(videoArgsOf(opts)) & @[
     "-movflags", "+faststart",
     "-shortest",
     outputPath

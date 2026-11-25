@@ -49,6 +49,20 @@ type
       ## content from the one run; only the time a screen stood still is cut.
     settleTimeoutMs*, stageTimeoutMs*: int
       ## The run's limits, as a lane gives them (0 = the runner's defaults).
+    videoArgs*: seq[string]
+      ## The final encode (`media.UiVideoArgs` when empty): the one lossy
+      ## generation of a render. Every intermediate is lossless RGB.
+    narrationOut*: string     ## also write the narration track (WAV) here
+    htmlDir*: string
+      ## also write a browser composite here: the screencast encoded once,
+      ## the presenter beside it, captions as WebVTT and callouts as HTML,
+      ## put together by the page (`index.html`) as it plays
+    pageCodecs*: seq[string]
+      ## the codecs of the page's screencast, in the order it offers them
+      ## (default `DefaultPageCodecs`)
+    castOut*: string
+      ## a terminal flavour: also write its cast on the video's timeline
+      ## (virtual timing and the step cap applied) here, for asciinema
     fromRun*: string
       ## A run directory a render (or `dvs run --record always`) already
       ## recorded: composed again, without running the scenario. Its media is
@@ -266,20 +280,22 @@ proc videoSize(path: string): (int, int) =
   (parseInt(p[0]), parseInt(p[1]))
 
 proc toMp4(src, dst: string; minSeconds: float; retime = ""; removedMs = 0.0) =
-  ## The recording as an H.264 video `minSeconds` long (its last frame held
-  ## when it is shorter, cut when it is longer), even-sized for yuv420p;
+  ## The recording as a lossless RGB video `minSeconds` long (its last frame
+  ## held when it is shorter, cut when it is longer), even-sized, at its own
+  ## scale;
   ## `retime` (a `setpts` expression) moves its frames first, shortening it by
   ## `removedMs`.
   let have = ffprobeDuration(src) - removedMs / 1000
   let pad = max(0.0, minSeconds - have)
   run(@[resolveFfmpegBinary(), "-y", "-hide_banner", "-loglevel", "error", "-i", src,
         "-vf", (if retime.len > 0: "setpts='" & retime & "'," else: "") &
-          "scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30,tpad=stop_mode=clone:stop_duration=" &
+          # even-sized by cropping the odd pixel, never by rescaling (a
+          # rescale blurs every glyph)
+          "crop=trunc(iw/2)*2:trunc(ih/2)*2:0:0,fps=30,tpad=stop_mode=clone:stop_duration=" &
           formatFloat(pad + 0.5, ffDecimal, 3),
         # and no longer: what a real-time recording holds after the last step
         # (the application closing, the recorder finishing) is not the run's
-        "-t", formatFloat(minSeconds + 0.5, ffDecimal, 3),
-        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-an", dst],
+        "-t", formatFloat(minSeconds + 0.5, ffDecimal, 3)] & LosslessVideoArgs & @["-an", dst],
       "converting the recording")
 
 # ---------------------------------------------------------------------------
@@ -359,6 +375,152 @@ proc narrationTrack(clips: seq[(string, float)]; dst: string) =
   args.add @["-filter_complex", filt.join(";"), "-map", "[out]", "-c:a", "pcm_s16le", dst]
   run(args, "mixing the narration")
 
+# ---------------------------------------------------------------------------
+# A browser composite
+# ---------------------------------------------------------------------------
+
+proc vttTime(t: float): string =
+  let ms = int(max(0.0, t) * 1000 + 0.5)
+  align($(ms div 3_600_000), 2, '0') & ":" & align($((ms div 60_000) mod 60), 2, '0') & ":" &
+    align($((ms div 1000) mod 60), 2, '0') & "." & align($(ms mod 1000), 3, '0')
+
+proc htmlEscape(s: string): string =
+  s.multiReplace(("&", "&amp;"), ("<", "&lt;"), (">", "&gt;"), ("\"", "&quot;"))
+
+proc sourceType(codec: string): string =
+  ## The `type` of a page's `<source>` in the named codec, so a browser that
+  ## cannot decode it skips it without fetching it.
+  case codec
+  of "av1-444": "video/webm; codecs=\"av01.1.08M.08, opus\""
+  of "av1": "video/webm; codecs=\"av01.0.08M.08, opus\""
+  of "vp9-444": "video/webm; codecs=\"vp09.01.40.08, opus\""
+  of "vp9": "video/webm; codecs=\"vp09.00.40.08, opus\""
+  of "h264-444": "video/mp4; codecs=\"avc1.F40028, mp4a.40.2\""
+  of "hevc-444": "video/mp4; codecs=\"hvc1.4.10.L120.90, mp4a.40.2\""
+  of "hevc": "video/mp4; codecs=\"hvc1.1.6.L120.90, mp4a.40.2\""
+  else: "video/mp4; codecs=\"avc1.640028, mp4a.40.2\""
+
+const DefaultPageCodecs* = @["av1-444", "h264-444"]
+  ## A page's screencast, in the order a browser tries them: AV1 4:4:4 where
+  ## it decodes (Chrome, Firefox; the smallest and sharpest), H.264 4:4:4
+  ## where it does not (Safari). DemoVideoScript-pm spec/Codec-Study.md.
+
+proc writeBrowserComposite*(dir, base, narration, presenter: string;
+                            avatar: seq[AvatarKeyframe]; captions: seq[Caption];
+                            cw, ch: int; codecs: seq[string]; title: string) =
+  ## The render as a page that composites it while it plays: the screencast
+  ## encoded once on its own in each of `codecs` (`ui-<codec>.*`, with the
+  ## narration; the page's `<source>`s in that order), the presenter as its
+  ## own video placed over it by CSS, the captions as WebVTT on the
+  ## screencast's track, the callouts as positioned HTML. Nothing is drawn
+  ## into the screencast, so its text is encoded once, at its own size.
+  createDir(dir)
+  var sources = ""
+  for codec in codecs:
+    let vargs = videoCodecArgs(codec)
+    let webm = audioArgsFor(vargs)[1] == "libopus"
+    let ui = "ui-" & codec & (if webm: ".webm" else: ".mp4")
+    var args = @[resolveFfmpegBinary(), "-y", "-hide_banner", "-loglevel", "error", "-i", base]
+    if narration != "": args.add @["-i", narration, "-map", "0:v", "-map", "1:a", "-af", "apad", "-shortest"]
+    args.add vargs
+    if narration != "": args.add audioArgsFor(vargs)
+    else: args.add "-an"
+    if not webm: args.add @["-movflags", "+faststart"]
+    args.add dir / ui
+    run(args, "encoding the screencast for the page (" & codec & ")")
+    sources.add "\n<source src=\"" & ui & "\" type='" & sourceType(codec) & "'>"
+  var vtt = "WEBVTT\n\n"
+  var cues = newJArray()
+  var callouts = newJArray()
+  var n = 0
+  for c in captions:
+    if c.x.isSome:
+      # a callout: beside its target, at the position the run noted
+      var x = 0.0
+      let m = c.x.get
+      let a = m.find('(')
+      let b = m.find("\\,")
+      if a >= 0 and b > a:
+        try: x = parseFloat(m[a + 1 ..< b])
+        except ValueError: discard
+      var y = 0.0
+      try: y = parseFloat(c.y.get("0"))
+      except ValueError: discard
+      callouts.add %*{"text": c.text, "start": c.startTime, "end": c.endTime,
+                      "left": x / float(cw) * 100, "top": y / float(ch) * 100}
+    elif c.y.isSome:
+      # a banner: centred near the top
+      callouts.add %*{"text": c.text, "start": c.startTime, "end": c.endTime,
+                      "left": 50.0, "top": 100.0 / 12, "center": true}
+    else:
+      inc n
+      vtt.add $n & "\n" & vttTime(c.startTime) & " --> " & vttTime(c.endTime) & "\n" & c.text & "\n\n"
+      cues.add %*{"start": c.startTime, "end": c.endTime, "text": c.text}
+  writeFile(dir / "captions.vtt", vtt)
+  var head = ""
+  var headStyle = ""
+  if presenter != "" and avatar.len > 0:
+    head = "presenter" & presenter.splitFile.ext
+    copyFile(presenter, dir / head)
+    let r = avatar[0].dstRect
+    headStyle = "left:" & formatFloat(r.x / float(cw) * 100, ffDecimal, 3) & "%;top:" &
+      formatFloat(r.y / float(ch) * 100, ffDecimal, 3) & "%;width:" &
+      formatFloat(r.w / float(cw) * 100, ffDecimal, 3) & "%;height:" &
+      formatFloat(r.h / float(ch) * 100, ffDecimal, 3) & "%"
+  let page = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>""" & htmlEscape(title) & """</title>
+<style>
+:root { color-scheme: dark; }
+body { margin: 0; background: #111; display: grid; place-items: center; min-height: 100vh; }
+.stage { position: relative; width: min(100vw, """ & $cw & """px); aspect-ratio: """ & $cw & " / " & $ch & """; }
+.stage > video.ui { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stage > video.head { position: absolute; object-fit: cover; border-radius: 50%; pointer-events: none; """ & headStyle & """ }
+.callout { position: absolute; font: 600 18px/1.3 system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.6);
+  padding: 4px 10px; border-radius: 4px; display: none; pointer-events: none; }
+video::cue { font: 500 28px/1.3 system-ui, sans-serif; background: rgba(0,0,0,.55); }
+</style></head><body>
+<div class="stage" id="stage">
+<video class="ui" id="ui" controls playsinline preload="auto">""" & sources & """
+</video>""" & (if head != "": """
+<video class="head" id="head" src="""" & head & """" muted playsinline preload="auto"></video>""" else: "") & """
+</div>
+<script>
+// The page is the compositor: the presenter follows the screencast's clock,
+// and the callouts show while the screencast is inside their span.
+const ui = document.getElementById("ui");
+const head = document.getElementById("head");
+const callouts = """ & ($callouts).replace("</", "<\\/") & """;
+// The captions (also written beside the page as captions.vtt) are added from
+// here, not by a <track src>: a page opened from file:// may not load one.
+const captions = ui.addTextTrack("captions", "Captions", "en");
+for (const c of """ & ($cues).replace("</", "<\\/") & """) captions.addCue(new VTTCue(c.start, c.end, c.text));
+captions.mode = "showing";
+const stage = document.getElementById("stage");
+for (const c of callouts) {
+  const el = document.createElement("div");
+  el.className = "callout"; el.textContent = c.text;
+  el.style.left = c.left + "%"; el.style.top = c.top + "%";
+  if (c.center) el.style.transform = "translateX(-50%)";
+  stage.appendChild(el); c.el = el;
+}
+function sync() {
+  const t = ui.currentTime;
+  for (const c of callouts) c.el.style.display = t >= c.start && t < c.end ? "block" : "none";
+  if (head) {
+    if (Math.abs(head.currentTime - t) > 0.08 && t < head.duration) head.currentTime = t;
+    if (ui.paused !== head.paused) ui.paused ? head.pause() : head.play().catch(() => {});
+  }
+}
+ui.addEventListener("play", sync); ui.addEventListener("pause", sync); ui.addEventListener("seeked", sync);
+const tick = () => { sync(); ui.requestVideoFrameCallback ? ui.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); };
+tick();
+</script>
+</body></html>
+"""
+  writeFile(dir / "index.html", page)
+
 proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): RenderReport =
   ## Run `doc` on `flavour` and compose the video at `opts.outPath`. A run that
   ## does not pass produces no video (and removes an earlier one at that path).
@@ -413,13 +575,13 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
         st.leadInMs = max(0.0, float(sd.leadIn))
       except CatchableError: discard
     for f in m{"media"}.getElems:
-      if f.getStr.endsWith(".cast") or f.getStr.endsWith(".webm") or f.getStr.endsWith(".mp4"):
+      if f.getStr.endsWith(".cast") or f.getStr.endsWith(".webm") or f.getStr.endsWith(".mp4") or f.getStr.endsWith(".mkv"):
         media = f.getStr
     if opts.fromRun != "":
       # the copy's own media, under its new directory
       if media != "": media = runDir / media.extractFilename
       if media == "" or not fileExists(media):
-        for name in ["session.cast", "session.webm", "session.mp4"]:
+        for name in ["session.cast", "session.webm", "session.mp4", "session.mkv"]:
           if fileExists(runDir / name): media = runDir / name
   let videoJson = runDir / "session.video.json"
   if fileExists(videoJson): clock.leadMs = parseFile(videoJson){"leadMs"}.getFloat
@@ -487,14 +649,20 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
   if media.endsWith(".cast"):
     let timed = work / "timed.cast"
     retimeCast(media, timed, clock)
+    if opts.castOut != "":
+      createDir(opts.castOut.parentDir)
+      copyFile(timed, opts.castOut)
     rasteriseCast(timed, base, opts, endMs / 1000 + 0.5)
   else:
     toMp4(media, base, endMs / 1000 + 0.5,
           retime = clock.retimeExpression, removedMs = clock.removedMs)
   # callouts, at their target's geometry when the run noted it
   let (bw, bh) = videoSize(base)
-  let cw = (if opts.canvasWidth > 0: opts.canvasWidth else: 1920)
-  let ch = (if opts.canvasHeight > 0: opts.canvasHeight else: 1080)
+  # the canvas is the recording's own size unless asked otherwise: a UI
+  # rescaled to fit another size (1600x1000 to 1728x1080 in 1920x1080) lost
+  # more sharpness than any other step (DemoVideoScript-pm spec/Codec-Study.md)
+  let cw = (if opts.canvasWidth > 0: opts.canvasWidth else: bw)
+  let ch = (if opts.canvasHeight > 0: opts.canvasHeight else: bh)
   let scale = min(cw / bw, ch / bh)
   let ox = (float(cw) - float(bw) * scale) / 2
   let oy = (float(ch) - float(bh) * scale) / 2
@@ -527,24 +695,9 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
         else:
           cap.y = some("h/12")
         captions.add cap
-  # 5. composition: the screencast with its captions and callouts, the
-  # presenter, then the narration
-  var composeOpts = defaultComposeOptions()
-  composeOpts.canvasWidth = cw
-  composeOpts.canvasHeight = ch
-  let silent = work / "silent.mp4"
-  composeSilentVideo(base, silent, captions, composeOpts)
-  var picture = silent
-  if opts.avatarVideo != "" and avatar.len > 0:
-    let (sw, sh) = videoSize(opts.avatarVideo)
-    picture = work / "presenter.mp4"
-    composeVideoWithAvatarTrack(silent, opts.avatarVideo, picture,
-      AvatarTrack(sourceVideo: opts.avatarVideo, keyframes: avatar), cw, ch, sw, sh,
-      useAvatarAudio = false)
-  createDir(opts.outPath.parentDir)
-  if narration.len == 0 or opts.speech == "none":
-    copyFile(picture, opts.outPath)
-  else:
+  # 5. the narration track, which a presenter is made from
+  var track = ""
+  if narration.len > 0 and opts.speech != "none":
     let reg = newDefaultSpeechRegistry()
     let provider = (if opts.speech != "": opts.speech else: defaultHostProviderName())
     var clips: seq[(string, float)]
@@ -554,12 +707,52 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
       if voice in opts.voices: so.voiceId = some(opts.voices[voice])
       synthesizeWith(reg, provider, pl.text, wav, so)
       clips.add (wav, pl.startMs)
-    let track = work / "narration.wav"
+    track = work / "narration.wav"
     narrationTrack(clips, track)
+    if opts.narrationOut != "":
+      createDir(opts.narrationOut.parentDir)
+      copyFile(track, opts.narrationOut)
+  # 6. composition: the screencast with its captions and callouts, then the
+  # presenter, encoded once (every input before the last step is lossless)
+  let finalArgs = (if opts.videoArgs.len > 0: opts.videoArgs else: UiVideoArgs)
+  if opts.avatarVideo != "" and avatar.len == 0:
+    # a presenter with no keyframes of the scenario's: the whole video, in a
+    # circle at the bottom right
+    let side = float(min(cw, ch)) * 0.28
+    var kf = defaultAvatarKeyframe(0.0)
+    kf.dstRect = initRectF(float(cw) - side - 24, float(ch) - side - 24, side, side)
+    kf.keyMethod = akmCircle
+    kf.despill = false
+    let (sw, sh) = videoSize(opts.avatarVideo)
+    let sq = float(min(sw, sh))
+    kf.srcCrop = initRectF((float(sw) - sq) / 2, (float(sh) - sq) / 2, sq, sq)
+    avatar.add kf
+  var composeOpts = defaultComposeOptions()
+  composeOpts.canvasWidth = cw
+  composeOpts.canvasHeight = ch
+  let presenter = opts.avatarVideo != "" and avatar.len > 0
+  composeOpts.videoArgs = (if presenter: LosslessVideoArgs else: finalArgs)
+  let silent = work / "silent.mp4"
+  composeSilentVideo(base, silent, captions, composeOpts)
+  var picture = silent
+  if presenter:
+    let (sw, sh) = videoSize(opts.avatarVideo)
+    picture = work / ("presenter" & opts.outPath.splitFile.ext)
+    composeVideoWithAvatarTrack(silent, opts.avatarVideo, picture,
+      AvatarTrack(sourceVideo: opts.avatarVideo, keyframes: avatar), cw, ch, sw, sh,
+      useAvatarAudio = false, videoArgs = finalArgs)
+  createDir(opts.outPath.parentDir)
+  if track == "":
+    copyFile(picture, opts.outPath)
+  else:
     run(@[resolveFfmpegBinary(), "-y", "-hide_banner", "-loglevel", "error",
           "-i", picture, "-i", track, "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-          "-af", "apad", "-c:a", "aac", "-b:a", "192k", "-shortest", opts.outPath],
+          "-af", "apad"] & audioArgsFor(finalArgs) & @["-shortest", opts.outPath],
         "adding the narration")
+  if opts.htmlDir != "":
+    writeBrowserComposite(opts.htmlDir, base, track, opts.avatarVideo, avatar, captions, cw, ch,
+                          (if opts.pageCodecs.len > 0: opts.pageCodecs else: DefaultPageCodecs),
+                          result.flavour)
   result.ok = true
   result.video = opts.outPath
 

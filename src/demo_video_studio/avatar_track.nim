@@ -25,6 +25,7 @@ type
     akmChroma = "chroma"
     akmColor  = "color"
     akmLuma   = "luma"
+    akmCircle = "circle"   ## no key: the presenter cut to a circle
 
   AvatarKeyframe* = object
     time*: float
@@ -120,6 +121,7 @@ proc parseKeyMethod*(s: string): AvatarKeyMethod =
   of "chroma": akmChroma
   of "color":  akmColor
   of "luma":   akmLuma
+  of "circle": akmCircle
   else: raise newException(ValueError, "unknown key method: " & s)
 
 proc keyframeFromJson*(node: JsonNode, path: string): AvatarKeyframe =
