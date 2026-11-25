@@ -1,0 +1,30 @@
+<!doctype html><meta charset="utf-8"><title>Decode fidelity</title>
+<pre id="log"></pre>
+<script>
+// Each file: seek into the 11th still (5.0-5.5 s), draw the decoded frame,
+// and compare it with the still it was encoded from: PSNR over RGB.
+const files = JSON.parse(new URLSearchParams(location.search).get("files") || "[]");
+const log = (s) => (document.getElementById("log").textContent += s + "\n");
+const pixels = (src, w, h) => { const c = new OffscreenCanvas(w, h); const g = c.getContext("2d"); g.drawImage(src, 0, 0, w, h); return g.getImageData(0, 0, w, h).data; };
+(async () => {
+  const ref = new Image(); ref.src = "ref010.png"; await ref.decode();
+  const R = pixels(ref, ref.width, ref.height);
+  const out = [];
+  for (const f of files) {
+    const v = document.createElement("video"); v.muted = true; v.src = f;
+    const r = { file: f, ua: navigator.userAgent };
+    try {
+      await new Promise((ok, bad) => { v.onloadeddata = ok; v.onerror = () => bad(new Error("error " + v.error?.code)); setTimeout(() => bad(new Error("timeout")), 15000); });
+      v.currentTime = 5.25; await new Promise((ok) => (v.onseeked = ok));
+      await new Promise((ok) => setTimeout(ok, 300));
+      const D = pixels(v, ref.width, ref.height);
+      let se = 0, n = 0;
+      for (let i = 0; i < R.length; i += 4) for (let k = 0; k < 3; k++) { const d = R[i + k] - D[i + k]; se += d * d; n++; }
+      r.psnr = +(10 * Math.log10(255 * 255 / (se / n))).toFixed(2);
+    } catch (e) { r.error = String(e.message); }
+    log(JSON.stringify(r)); out.push(r);
+  }
+  await fetch("/result", { method: "POST", body: JSON.stringify(out) }).catch(() => {});
+  log("DONE");
+})();
+</script>

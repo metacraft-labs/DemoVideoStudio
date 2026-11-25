@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Codec playback probe</title>
+<style>body{background:#111;color:#ddd;font:14px monospace} video{width:800px;display:block}</style>
+<pre id="log"></pre>
+<video id="v" muted playsinline></video>
+<script>
+// Each candidate: can the browser play it, and over 10 s of playback how many frames it
+// decoded, dropped and presented (getVideoPlaybackQuality, requestVideoFrameCallback).
+const files = JSON.parse(new URLSearchParams(location.search).get("files") || "[]");
+const log = (s) => (document.getElementById("log").textContent += s + "\n");
+const mime = (f) => f.endsWith(".webm") ? 'video/webm' : 'video/mp4';
+async function probe(f) {
+  const v = document.getElementById("v");
+  const r = { file: f, ua: navigator.userAgent };
+  v.src = f; v.load();
+  try {
+    await new Promise((ok, bad) => { v.oncanplay = ok; v.onerror = () => bad(new Error("error " + (v.error && v.error.code))); setTimeout(() => bad(new Error("no canplay in 15 s")), 15000); });
+  } catch (e) { r.playable = false; r.error = String(e.message); return r; }
+  r.playable = true; r.size = [v.videoWidth, v.videoHeight];
+  let presented = 0, first = null, last = null;
+  const cb = (now, meta) => { presented++; first ??= now; last = now; if (!v.paused) v.requestVideoFrameCallback(cb); };
+  if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(cb);
+  v.currentTime = 0; await v.play();
+  await new Promise((ok) => setTimeout(ok, 10000));
+  v.pause();
+  const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : {};
+  r.played_s = v.currentTime; r.total = q.totalVideoFrames; r.dropped = q.droppedVideoFrames;
+  r.presented = presented; r.presented_fps = presented && last > first ? +(1000 * (presented - 1) / (last - first)).toFixed(1) : null;
+  return r;
+}
+(async () => {
+  const out = [];
+  for (const f of files) { const r = await probe(f); log(JSON.stringify(r)); out.push(r); }
+  await fetch("/result", { method: "POST", body: JSON.stringify(out) }).catch(() => {});
+  log("DONE");
+})();
+</script>
