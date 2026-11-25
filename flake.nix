@@ -130,6 +130,9 @@
             DVS_PLAYWRIGHT_CORE = "${pkgs.playwright-driver}";
             # the pinned font terminal flavours are rasterised through
             DVS_STUDIO_FONT_DIR = "${pkgs.jetbrains-mono}/share/fonts/truetype";
+            # what a cast's glyphs fall back to when JetBrains Mono lacks them
+            # (arrows, media controls): agg is given these and nothing else
+            DVS_STUDIO_FALLBACK_FONT_DIRS = "${pkgs.dejavu_fonts}/share/fonts/truetype:${pkgs.noto-fonts}/share/fonts/noto";
             # the asciinema-player release `dvs-studio cast-page` inlines
             DVS_ASCIINEMA_PLAYER_DIR = "${asciinemaPlayer}";
             shellHook = ''

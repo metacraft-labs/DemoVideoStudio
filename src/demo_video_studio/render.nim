@@ -18,7 +18,7 @@
 ## Terminal recordings are casts, rasterised with `agg` (asciinema's renderer)
 ## through a pinned font at a declared size.
 
-import std/[algorithm, json, math, options, os, osproc, strutils, tables]
+import std/[algorithm, json, math, options, os, osproc, streams, strtabs, strutils, tables]
 import demo_video_script/[backend, jsonlines, runner, model]
 import gui_assert/ffmpeg_tools
 import ./[scenario_doc, flavour, media, avatar_track, speech_synthesis]
@@ -319,6 +319,53 @@ proc retimeCast(src, dst: string; c: MediaClock; untilMs = -1.0) =
     res.add $ev
   writeFile(dst, res.join("\n") & "\n")
 
+proc fallbackFontDirs*(): seq[string] =
+  ## The pinned fonts a cast's glyphs fall back to when the main font lacks
+  ## them (`DVS_STUDIO_FALLBACK_FONT_DIRS`, `:`-separated; the dev shell
+  ## sets DejaVu and Noto Sans Symbols 2).
+  for d in getEnv("DVS_STUDIO_FALLBACK_FONT_DIRS").split(':'):
+    if d.len > 0 and dirExists(d): result.add d
+
+proc aggFontEnv*(work: string; fontDirs: seq[string]): StringTableRef =
+  ## The environment agg runs in: its fonts are `fontDirs` and nothing else.
+  ## agg's font database also loads the host's fonts (through fontconfig,
+  ## the XDG data directories and the home directory), and falls back to
+  ## them for every glyph the main font lacks, so the same cast drew its
+  ## toolbar with whatever the caller's environment happened to list (on
+  ## 2026-11-26 Adwaita Mono, through usvg, 2214 times in one render that
+  ## then aborted). A fonts.conf naming only `fontDirs`, and an empty home
+  ## and data path, leave it nothing else to find.
+  let home = work / "agg-home"
+  createDir(home)
+  var conf = "<?xml version=\"1.0\"?>\n<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n<fontconfig>\n"
+  for d in fontDirs: conf.add "  <dir>" & d & "</dir>\n"
+  conf.add "  <cachedir>" & home / "fc-cache" & "</cachedir>\n</fontconfig>\n"
+  writeFile(work / "agg-fonts.conf", conf)
+  result = newStringTable(modeCaseSensitive)
+  result["PATH"] = getEnv("PATH")
+  result["HOME"] = home
+  result["XDG_DATA_HOME"] = home
+  result["XDG_CONFIG_HOME"] = home
+  result["XDG_CACHE_HOME"] = home
+  result["XDG_DATA_DIRS"] = home
+  result["FONTCONFIG_FILE"] = work / "agg-fonts.conf"
+
+proc aggArgv*(agg, castPath, gif, fontDir, fontFamily: string; fontSize: int;
+              fallbackDirs: seq[string]): seq[string] =
+  result = @[agg, "--quiet", "--no-loop", "--font-dir", fontDir]
+  for d in fallbackDirs: result.add @["--font-dir", d]
+  result.add @["--font-family", fontFamily, "--font-size", $fontSize,
+               "--idle-time-limit", "100000", "--last-frame-duration", "1", "--fps-cap", "30",
+               "--theme", "asciinema", castPath, gif]
+
+proc runAgg*(argv: seq[string]; env: StringTableRef; what: string) =
+  let p = startProcess(argv[0], args = argv[1 .. ^1], env = env,
+                       options = {poStdErrToStdOut})
+  let output = p.outputStream.readAll()
+  let code = p.waitForExit()
+  p.close()
+  if code != 0: raise renderError(what & " failed (" & $code & "):\n" & output)
+
 proc rasteriseCast(castPath, mp4: string; opts: RenderOptions; minSeconds: float) =
   let agg = getEnv("AGG_BIN", findExe("agg"))
   if agg.len == 0: raise renderError("agg (asciinema's cast renderer) is not on PATH")
@@ -326,11 +373,11 @@ proc rasteriseCast(castPath, mp4: string; opts: RenderOptions; minSeconds: float
   if fontDir == "" or not dirExists(fontDir):
     raise renderError("no pinned font: give a font directory (--font-dir or DVS_STUDIO_FONT_DIR)")
   let gif = mp4.changeFileExt(".gif")
-  run(@[agg, "--quiet", "--no-loop", "--font-dir", fontDir,
-        "--font-family", (if opts.fontFamily != "": opts.fontFamily else: "JetBrains Mono"),
-        "--font-size", $(if opts.fontSize > 0: opts.fontSize else: 16),
-        "--idle-time-limit", "100000", "--last-frame-duration", "1", "--fps-cap", "30",
-        "--theme", "asciinema", castPath, gif], "rasterising the cast")
+  let fallback = fallbackFontDirs()
+  runAgg(aggArgv(agg, castPath, gif, fontDir,
+                 (if opts.fontFamily != "": opts.fontFamily else: "JetBrains Mono"),
+                 (if opts.fontSize > 0: opts.fontSize else: 16), fallback),
+         aggFontEnv(mp4.parentDir, @[fontDir] & fallback), "rasterising the cast")
   toMp4(gif, mp4, minSeconds)
 
 # ---------------------------------------------------------------------------
