@@ -83,6 +83,19 @@
           '';
 
           referencePython = pkgs.python3.withPackages (ps: [ ps.jsonschema ]);
+          # asciinema's own player (Apache-2.0), the release `cast_page.nim`
+          # names: its self-contained bundle, inlined into `dvs-studio
+          # cast-page`'s pages
+          asciinemaPlayer = pkgs.runCommand "asciinema-player-3.17.0" { } ''
+            mkdir -p $out
+            tar -xzf ${
+              pkgs.fetchurl {
+                url = "https://registry.npmjs.org/asciinema-player/-/asciinema-player-3.17.0.tgz";
+                hash = "sha512-JbjNJmA2TLIeYNaOEja+kVSzXadKoqpIzVVmfBGNj2DmdtE/vExBCnkE8NYEcpaQcDvUYg8Ltt0urT80frACmw==";
+              }
+            } package/dist/bundle package/LICENSE
+            cp package/dist/bundle/* package/LICENSE $out/
+          '';
         in
         {
           devShells.default = pkgs.mkShell {
@@ -117,6 +130,8 @@
             DVS_PLAYWRIGHT_CORE = "${pkgs.playwright-driver}";
             # the pinned font terminal flavours are rasterised through
             DVS_STUDIO_FONT_DIR = "${pkgs.jetbrains-mono}/share/fonts/truetype";
+            # the asciinema-player release `dvs-studio cast-page` inlines
+            DVS_ASCIINEMA_PLAYER_DIR = "${asciinemaPlayer}";
             shellHook = ''
               ${ownRepoOnly installGitHooks}
               export FFMPEG_BIN=${pkgs.ffmpeg}/bin/ffmpeg
