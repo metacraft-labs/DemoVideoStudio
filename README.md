@@ -103,7 +103,10 @@ and the recording up to that step, and exits 1. `--json` prints the report.
 `--step-cap MS` shows no step for longer than `MS`: a step that took longer — a wait on a
 loaded machine, a backend reading a window by OCR — keeps the first half of the cap at its
 own pace (the input's pointer motion and the change it caused) and the rest is sped up into
-the other half. A real-time recording is retimed with ffmpeg's `setpts`, a terminal cast on
+the other half. The time between two steps (where a real-time run sleeps a step's `dwell`, and
+where a backend takes the step's still) keeps the scenario's own pauses — the `dwell` before,
+the `lead-in` after — and 300 ms; of what a real-time recording holds before the first step,
+the last 1.5 s is kept. A real-time recording is retimed with ffmpeg's `setpts`, a terminal cast on
 its virtual timeline; narration, captions and callouts follow. Every frame shown is still the
 one run's, in its order. `--settle-timeout MS` and `--stage-timeout MS` give the run a lane's
 limits. `--from-run DIR` composes a run already recorded (a render's `run/`, moved out of its
