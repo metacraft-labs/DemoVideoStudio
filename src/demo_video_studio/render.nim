@@ -79,6 +79,8 @@ type
     path: string
     startMs, endMs, vStart, vEnd: float
     pStart, pEnd: float       ## its span in the video, once the cap is applied
+    dwellMs, leadInMs: float  ## the scenario's own pauses after and before it (0: none)
+    gapShown, gapKeep: float  ## the gap before it, as shown: its length and the part at its own pace
 
 proc renderError(msg: string): ref RenderError = newException(RenderError, msg)
 
@@ -94,35 +96,68 @@ type MediaClock = object
   leadMs: float               ## how far into the video recording began
   virtual: bool
   cap: float                  ## `RenderOptions.stepCapMs`
+  preCut: float               ## the start of the video the cap leaves out
 
 proc capped*(d, cap: float): float =
   ## How long a step that took `d` is shown for under `cap` (0: no cap).
   if cap <= 0 or d <= cap: d else: cap
 
+proc squeezed*(u, d, shown, keep: float): float =
+  ## Where the moment `u` into a stretch that took `d` is shown when it is
+  ## shown for `shown`: its first `keep` at its own pace, the rest sped up.
+  if d <= shown: return u
+  if u <= keep: u
+  else: keep + (min(u, d) - keep) * (shown - keep) / (d - keep)
+
 proc cappedOffset*(u, d, cap: float): float =
   ## Where the moment `u` into a step that took `d` is shown, under `cap`:
   ## the first half of the cap at the step's own pace, the rest sped up.
-  if cap <= 0 or d <= cap: return u
-  let keep = cap / 2
-  if u <= keep: u
-  else: keep + (min(u, d) - keep) * (cap - keep) / (d - keep)
+  if cap <= 0 or d <= cap: u else: squeezed(u, d, cap, cap / 2)
 
 proc baseSpan(c: MediaClock; s: MStep): (float, float) =
   ## A step's span on the run's own timeline: virtual or real.
   if c.virtual: (s.vStart, s.vEnd) else: (s.startMs, s.endMs)
 
+proc gapBefore(c: MediaClock; k: int): float =
+  ## The time between step k-1 and step k on the run's own timeline.
+  if k == 0: return 0.0
+  let (_, pb1) = c.baseSpan(c.steps[k - 1])
+  let (b0, _) = c.baseSpan(c.steps[k])
+  max(0.0, b0 - pb1)
+
+const PreRollMs = 1500.0
+  ## What a real-time video keeps, under a cap, of what it recorded before
+  ## the first step.
+
+const GapSlackMs = 300.0
+  ## What a gap between two steps keeps beyond the scenario's own pauses
+  ## under a cap: the time a reader takes to see the next input coming.
+
 proc layOut(c: var MediaClock) =
-  ## Each step's span in the video: the gaps between steps as they were, each
-  ## step as long as `capped` says.
+  ## Each step's span in the video, each step as long as `capped` says. A
+  ## gap between steps — a real-time run's `dwell` sleeps there, and so does
+  ## the backend's still of the step, which can take seconds on a loaded
+  ## host — keeps, under a cap, the scenario's own pauses (the dwell after
+  ## the step before, the lead-in of the next) and `GapSlackMs`; the rest of
+  ## it is sped up into its last 150 ms.
   if c.steps.len == 0: return
   let first = c.steps[0]
   let pre = c.leadMs + first.startMs - c.recStart
-  var cursor = pre + (if c.virtual: first.vStart else: 0.0)
+  # before the first step (the application opening): under a cap, its last
+  # `PreRollMs` only
+  c.preCut = (if c.cap > 0 and not c.virtual: max(0.0, pre - PreRollMs) else: 0.0)
+  var cursor = pre - c.preCut + (if c.virtual: first.vStart else: 0.0)
   for k in 0 ..< c.steps.len:
     let (b0, b1) = c.baseSpan(c.steps[k])
     if k > 0:
-      let (_, pb1) = c.baseSpan(c.steps[k - 1])
-      cursor += max(0.0, b0 - pb1)
+      let g = c.gapBefore(k)
+      var shown = g
+      if c.cap > 0:
+        let own = (if c.virtual: 0.0 else: c.steps[k - 1].dwellMs) + c.steps[k].leadInMs
+        shown = min(g, own + GapSlackMs)
+      c.steps[k].gapShown = shown
+      c.steps[k].gapKeep = max(0.0, shown - 150.0)
+      cursor += shown
     c.steps[k].pStart = cursor
     cursor += capped(b1 - b0, c.cap)
     c.steps[k].pEnd = cursor
@@ -133,7 +168,7 @@ proc mediaMs(c: MediaClock; ms: float): float =
   let first = c.steps[0]
   # before the first step: real time; the step timeline starts where the
   # first step started
-  if ms < first.startMs: return c.leadMs + ms - c.recStart
+  if ms < first.startMs: return max(0.0, c.leadMs + ms - c.recStart - c.preCut)
   for k, s in c.steps:
     if ms <= s.endMs:
       let (b0, b1) = c.baseSpan(s)
@@ -142,25 +177,43 @@ proc mediaMs(c: MediaClock; ms: float): float =
         return s.pStart + cappedOffset(f * (b1 - b0), b1 - b0, c.cap)
       # in the gap before step k
       let p = c.steps[k - 1]
+      let g = c.gapBefore(k)
       let f = (if s.startMs > p.endMs: (ms - p.endMs) / (s.startMs - p.endMs) else: 1.0)
-      return p.pEnd + f * (s.pStart - p.pEnd)
+      return p.pEnd + squeezed(f * g, g, s.gapShown, s.gapKeep)
   let last = c.steps[^1]
   last.pEnd + (ms - last.endMs)
 
+proc cutStretches(c: MediaClock): seq[(float, float, float)] =
+  ## A real-time recording's stretches the cap shortens, in its own time
+  ## (ms): (where the sped-up part starts, how long it is, the fraction of
+  ## it that is cut).
+  if c.virtual or c.cap <= 0: return
+  if c.preCut > 0: result.add (0.0, c.preCut, 1.0)
+  for k, s in c.steps:
+    if k > 0:
+      let p = c.steps[k - 1]
+      let g = s.startMs - p.endMs
+      if g > s.gapShown and g > s.gapKeep:
+        result.add (c.leadMs + p.endMs - c.recStart + s.gapKeep, g - s.gapKeep,
+                    1 - (s.gapShown - s.gapKeep) / (g - s.gapKeep))
+    let d = s.endMs - s.startMs
+    if d > c.cap:
+      let keep = c.cap / 2
+      result.add (c.leadMs + s.startMs - c.recStart + keep, d - keep,
+                  1 - (c.cap - keep) / (d - keep))
+
+proc removedMs(c: MediaClock): float =
+  ## How much shorter the cap makes a real-time recording.
+  for (_, L, lose) in c.cutStretches: result += L * lose
+
 proc retimeExpression(c: MediaClock): string =
   ## A real-time recording's timestamps (`T`, seconds) as the video's under
-  ## the cap: every step longer than the cap loses the time `cappedOffset`
-  ## takes from it, by an ffmpeg expression for `setpts`.
+  ## the cap, by an ffmpeg expression for `setpts`: every stretch the cap
+  ## shortens loses the time `squeezed` takes from it.
   var terms: seq[string]
-  for s in c.steps:
-    let d = s.endMs - s.startMs
-    if c.cap <= 0 or d <= c.cap: continue
-    let keep = c.cap / 2
-    let a = (c.leadMs + s.startMs - c.recStart + keep) / 1000
-    let L = (d - keep) / 1000
-    let lose = 1 - (c.cap - keep) / (d - keep)
-    terms.add "clip(T-" & formatFloat(a, ffDecimal, 4) & ",0," & formatFloat(L, ffDecimal, 4) &
-              ")*" & formatFloat(lose, ffDecimal, 6)
+  for (a, L, lose) in c.cutStretches:
+    terms.add "clip(T-" & formatFloat(a / 1000, ffDecimal, 4) & ",0," &
+              formatFloat(L / 1000, ffDecimal, 4) & ")*" & formatFloat(lose, ffDecimal, 6)
   if terms.len == 0: return ""
   "(T-" & terms.join("-") & ")/TB"
 
@@ -213,15 +266,19 @@ proc videoSize(path: string): (int, int) =
   (parseInt(p[0]), parseInt(p[1]))
 
 proc toMp4(src, dst: string; minSeconds: float; retime = ""; removedMs = 0.0) =
-  ## The recording as an H.264 video at least `minSeconds` long (its last frame
-  ## held), even-sized for yuv420p; `retime` (a `setpts` expression) moves its
-  ## frames first, shortening it by `removedMs`.
+  ## The recording as an H.264 video `minSeconds` long (its last frame held
+  ## when it is shorter, cut when it is longer), even-sized for yuv420p;
+  ## `retime` (a `setpts` expression) moves its frames first, shortening it by
+  ## `removedMs`.
   let have = ffprobeDuration(src) - removedMs / 1000
   let pad = max(0.0, minSeconds - have)
   run(@[resolveFfmpegBinary(), "-y", "-hide_banner", "-loglevel", "error", "-i", src,
         "-vf", (if retime.len > 0: "setpts='" & retime & "'," else: "") &
           "scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30,tpad=stop_mode=clone:stop_duration=" &
           formatFloat(pad + 0.5, ffDecimal, 3),
+        # and no longer: what a real-time recording holds after the last step
+        # (the application closing, the recorder finishing) is not the run's
+        "-t", formatFloat(minSeconds + 0.5, ffDecimal, 3),
         "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-an", dst],
       "converting the recording")
 
@@ -349,6 +406,12 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
                             endMs: s{"endMs"}.getFloat, vStart: s{"virtualStartMs"}.getFloat,
                             vEnd: s{"virtualEndMs"}.getFloat)
     clock.steps.sort(proc (a, b: MStep): int = cmp(a.startMs, b.startMs))
+    for st in clock.steps.mitems:
+      try:
+        let sd = doc.step(st.path)
+        st.dwellMs = max(0.0, float(sd.dwell))
+        st.leadInMs = max(0.0, float(sd.leadIn))
+      except CatchableError: discard
     for f in m{"media"}.getElems:
       if f.getStr.endsWith(".cast") or f.getStr.endsWith(".webm") or f.getStr.endsWith(".mp4"):
         media = f.getStr
@@ -426,12 +489,8 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
     retimeCast(media, timed, clock)
     rasteriseCast(timed, base, opts, endMs / 1000 + 0.5)
   else:
-    var removed = 0.0
-    if not clock.virtual:
-      for s in clock.steps:
-        removed += (s.endMs - s.startMs) - capped(s.endMs - s.startMs, clock.cap)
     toMp4(media, base, endMs / 1000 + 0.5,
-          retime = (if clock.virtual: "" else: clock.retimeExpression), removedMs = removed)
+          retime = clock.retimeExpression, removedMs = clock.removedMs)
   # callouts, at their target's geometry when the run noted it
   let (bw, bh) = videoSize(base)
   let cw = (if opts.canvasWidth > 0: opts.canvasWidth else: 1920)
