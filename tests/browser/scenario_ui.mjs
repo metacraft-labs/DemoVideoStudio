@@ -17,13 +17,27 @@ const fail = (msg) => {
   process.exitCode = 1;
 };
 
+// Every reload and preview frame goes through the resident flavour (a live
+// run of the scenario), as the run's own step wait below does, so they get
+// the same bound. 30 s was too short on a host at load ~110: the preview
+// frame missed it at DemoVideoScript 028ea4f and b2dd47d alike. Each wait
+// prints how long it took, so the bound can be sized from what it measured.
+const FlavourBoundMs = 240000;
+async function timed(what, wait) {
+  const t0 = Date.now();
+  await wait();
+  console.error(`scenario_ui: ${what} took ${Date.now() - t0} ms`);
+}
+
 async function reloaded(action) {
   const before = await page.evaluate(() => document.body.dataset.loaded);
   await action();
-  await page.waitForFunction(
-    (b) => document.body.dataset.loaded !== b,
-    before,
-    { timeout: 30000 },
+  await timed("reload", () =>
+    page.waitForFunction(
+      (b) => document.body.dataset.loaded !== b,
+      before,
+      { timeout: FlavourBoundMs },
+    ),
   );
 }
 
@@ -100,11 +114,11 @@ try {
     null,
     { timeout: 240000 },
   );
-  await page.waitForFunction(
+  await timed("preview frame", () => page.waitForFunction(
     () => document.getElementById("frame").naturalWidth > 0,
     null,
-    { timeout: 30000 },
-  );
+    { timeout: FlavourBoundMs },
+  ));
   await page.dblclick('.step[data-path="3.1"]');
   await page.waitForFunction(
     () =>
