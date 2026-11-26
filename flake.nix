@@ -83,6 +83,7 @@
           '';
 
           referencePython = pkgs.python3.withPackages (ps: [ ps.jsonschema ]);
+          devFfmpeg = if pkgs.stdenv.isLinux then pkgs.ffmpeg-full else pkgs.ffmpeg;
           # asciinema's own player (Apache-2.0), the release `cast_page.nim`
           # names: its self-contained bundle, inlined into `dvs-studio
           # cast-page`'s pages
@@ -112,8 +113,11 @@
                 prek
                 uv
                 shellcheck
-                # composition, narration and the editor's previews run ffmpeg
-                ffmpeg
+                # composition, narration and the editor's previews run ffmpeg;
+                # on Linux ffmpeg-full, whose x11grab records an X window (the
+                # default build has none) and whose libaom, SVT-AV1, libvpx and
+                # x265 are the --codec encoders
+                devFfmpeg
                 # the scenario editor's page, driven in a real browser; the
                 # Playwright flavour's host
                 nodejs
@@ -137,8 +141,8 @@
             DVS_ASCIINEMA_PLAYER_DIR = "${asciinemaPlayer}";
             shellHook = ''
               ${ownRepoOnly installGitHooks}
-              export FFMPEG_BIN=${pkgs.ffmpeg}/bin/ffmpeg
-              export FFPROBE_BIN=${pkgs.ffmpeg}/bin/ffprobe
+              export FFMPEG_BIN=${devFfmpeg}/bin/ffmpeg
+              export FFPROBE_BIN=${devFfmpeg}/bin/ffprobe
               echo "DemoVideoStudio dev shell - nim $(nim --version 2>&1 | head -1)"
             '';
           };

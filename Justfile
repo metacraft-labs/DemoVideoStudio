@@ -29,6 +29,7 @@ suites := "tscenario_editor tscenario_ui trender " + linux_suites + " topen tcon
 # ffmpeg, the editor's HTTP surface, the artifact pipeline, the keyframe-script
 # parser and driver, narration and the presenter overlay without a provider.
 test: build build-flavours
+    bash tests/test_dev_shell_ffmpeg_x11grab.sh
     @mkdir -p {{build_dir}}/test-bin
     @for f in {{suites}}; do \
       echo "===== $f ====="; \
