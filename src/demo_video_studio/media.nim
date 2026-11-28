@@ -41,7 +41,7 @@
 ## silent base, producing audio that is exactly the narration but routed
 ## through a stable filter graph regardless of source audio presence.
 
-import std/[options, os, osproc, streams, strformat, strtabs, strutils]
+import std/[options, os, osproc, sequtils, streams, strformat, strtabs, strutils]
 
 import ./avatar_track
 export avatar_track
@@ -286,6 +286,49 @@ proc videoCodecArgs*(name: string): seq[string] =
   of "lossless": LosslessVideoArgs
   else: raise newException(ValueError, "unknown codec '" & name & "' (one of " &
                            VideoCodecNames.join(", ") & ")")
+
+const DefaultEncodeThreads* = 4
+  ## The encoder threads a render uses unless told otherwise. ffmpeg's
+  ## encoders otherwise size their pools to every CPU the host has, and
+  ## libaom and libvpx grow their memory with them: on a 64-thread host one
+  ## AV1 4:4:4 page encode reached several GB.
+
+proc withEncodeThreads*(videoArgs: seq[string]; threads: int): seq[string] =
+  ## `videoArgs` with its encoder bounded to `threads` threads, in the
+  ## option that encoder reads: `-threads` for libx264 and ffmpeg's own
+  ## encoders, `-threads` plus row multithreading for libvpx-vp9 and
+  ## libaom-av1, `pools=` inside `-x265-params` for libx265, and `lp=`
+  ## inside `-svtav1-params` for libsvtav1. An option already present is
+  ## replaced, not repeated. `threads <= 0` leaves the arguments as they are
+  ## (the encoder's own default).
+  result = videoArgs
+  if threads <= 0: return
+  var encoder = ""
+  for i in 0 ..< result.len - 1:
+    if result[i] in ["-c:v", "-vcodec", "-codec:v"]: encoder = result[i + 1]
+  proc setOpt(r: var seq[string]; key, val: string) =
+    let i = r.find(key)
+    if i >= 0 and i + 1 < r.len: r[i + 1] = val
+    else: r.add @[key, val]
+  proc setParam(r: var seq[string]; key, param, val: string; sep: char) =
+    ## `param=val` inside the `key` option's `a=b<sep>c=d` list.
+    let i = r.find(key)
+    if i < 0 or i + 1 >= r.len:
+      r.add @[key, param & "=" & val]
+      return
+    var parts = r[i + 1].split(sep).filterIt(it.len > 0 and not it.startsWith(param & "="))
+    parts.add param & "=" & val
+    r[i + 1] = parts.join($sep)
+  case encoder
+  of "libx265":
+    result.setParam("-x265-params", "pools", $threads, ':')
+  of "libsvtav1":
+    result.setParam("-svtav1-params", "lp", $threads, ':')
+  of "libvpx-vp9", "libaom-av1":
+    result.setOpt("-threads", $threads)
+    result.setOpt("-row-mt", "1")
+  else:
+    result.setOpt("-threads", $threads)
 
 proc videoArgsOf(opts: ComposeOptions): seq[string] =
   if opts.videoArgs.len > 0: opts.videoArgs else: UiVideoArgs

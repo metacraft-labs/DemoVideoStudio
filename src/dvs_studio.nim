@@ -35,7 +35,9 @@
 ## as a page composited while it plays (screencast, presenter, WebVTT
 ## captions, HTML callouts); `--page-codecs` names the page's encodes, in the
 ## order it offers them (default av1-444,h264-444). `--cast-out`: a terminal flavour's asciicast v2 on
-## the video's timeline.
+## the video's timeline. `--encode-threads N`: the threads each encode may use
+## (default 4, which also bounds libaom's and libvpx's memory; `auto` = the
+## encoder's own default, every CPU).
 ##
 ## `cast-page` writes an asciicast as one self-contained page played by
 ## asciinema-player (the flake's pinned release, `DVS_ASCIINEMA_PLAYER_DIR`, or
@@ -69,7 +71,7 @@ const Usage = """usage:
       [--virtual-timing] --out <video.mp4> [--font-dir DIR] [--font-family F] [--font-size PX]
       [--speech PROVIDER|none] [--voice NAME=VOICE]... [--avatar <video>] [--json]
       [--step-cap MS] [--settle-timeout MS] [--stage-timeout MS] [--from-run DIR]
-      [--codec NAME] [--canvas WxH] [--narration-out <wav>] [--html DIR] [--page-codecs A,B] [--cast-out <cast>]
+      [--codec NAME] [--canvas WxH] [--narration-out <wav>] [--html DIR] [--page-codecs A,B] [--cast-out <cast>] [--encode-threads N|auto]
   dvs-studio cast-page <cast> --out <page.html> [--title T] [--player DIR]
 """
 
@@ -157,6 +159,12 @@ proc cmdRender(args: seq[string]) =
           except ValueError as e: usage(e.msg)
           opts.pageCodecs.add c.strip
       of "cast-out": opts.castOut = val
+      of "encode-threads":
+        if val == "auto": opts.encodeThreads = -1
+        else:
+          try: opts.encodeThreads = parseInt(val)
+          except ValueError: usage("--encode-threads N|auto")
+          if opts.encodeThreads <= 0: usage("--encode-threads N|auto: N must be at least 1")
       of "canvas":
         let x = val.toLowerAscii.find('x')
         if x <= 0: usage("--canvas WxH")

@@ -63,6 +63,10 @@ type
     castOut*: string
       ## a terminal flavour: also write its cast on the video's timeline
       ## (virtual timing and the step cap applied) here, for asciinema
+    encodeThreads*: int
+      ## The threads each encode of the render may use (0 =
+      ## `media.DefaultEncodeThreads`; negative = the encoder's own default,
+      ## every CPU). It bounds the encoders' CPU and memory on any host.
     fromRun*: string
       ## A run directory a render (or `dvs run --record always`) already
       ## recorded: composed again, without running the scenario. Its media is
@@ -279,7 +283,15 @@ proc videoSize(path: string): (int, int) =
   let p = o.strip.split(',')
   (parseInt(p[0]), parseInt(p[1]))
 
-proc toMp4(src, dst: string; minSeconds: float; retime = ""; removedMs = 0.0) =
+proc encodeThreadsOf*(opts: RenderOptions): int =
+  ## The encoder threads `opts` asks for: 0 means the default, a negative
+  ## count the encoder's own (unbounded) default.
+  if opts.encodeThreads == 0: DefaultEncodeThreads
+  elif opts.encodeThreads < 0: 0
+  else: opts.encodeThreads
+
+proc toMp4(src, dst: string; minSeconds: float; retime = ""; removedMs = 0.0;
+           threads = DefaultEncodeThreads) =
   ## The recording as a lossless RGB video `minSeconds` long (its last frame
   ## held when it is shorter, cut when it is longer), even-sized, at its own
   ## scale;
@@ -295,7 +307,8 @@ proc toMp4(src, dst: string; minSeconds: float; retime = ""; removedMs = 0.0) =
           formatFloat(pad + 0.5, ffDecimal, 3),
         # and no longer: what a real-time recording holds after the last step
         # (the application closing, the recorder finishing) is not the run's
-        "-t", formatFloat(minSeconds + 0.5, ffDecimal, 3)] & LosslessVideoArgs & @["-an", dst],
+        "-t", formatFloat(minSeconds + 0.5, ffDecimal, 3)] &
+        withEncodeThreads(LosslessVideoArgs, threads) & @["-an", dst],
       "converting the recording")
 
 # ---------------------------------------------------------------------------
@@ -378,7 +391,7 @@ proc rasteriseCast(castPath, mp4: string; opts: RenderOptions; minSeconds: float
                  (if opts.fontFamily != "": opts.fontFamily else: "JetBrains Mono"),
                  (if opts.fontSize > 0: opts.fontSize else: 16), fallback),
          aggFontEnv(mp4.parentDir, @[fontDir] & fallback), "rasterising the cast")
-  toMp4(gif, mp4, minSeconds)
+  toMp4(gif, mp4, minSeconds, threads = encodeThreadsOf(opts))
 
 # ---------------------------------------------------------------------------
 # Rendering
@@ -454,7 +467,8 @@ const DefaultPageCodecs* = @["av1-444", "h264-444"]
 
 proc writeBrowserComposite*(dir, base, narration, presenter: string;
                             avatar: seq[AvatarKeyframe]; captions: seq[Caption];
-                            cw, ch: int; codecs: seq[string]; title: string) =
+                            cw, ch: int; codecs: seq[string]; title: string;
+                            threads = DefaultEncodeThreads) =
   ## The render as a page that composites it while it plays: the screencast
   ## encoded once on its own in each of `codecs` (`ui-<codec>.*`, with the
   ## narration; the page's `<source>`s in that order), the presenter as its
@@ -464,7 +478,7 @@ proc writeBrowserComposite*(dir, base, narration, presenter: string;
   createDir(dir)
   var sources = ""
   for codec in codecs:
-    let vargs = videoCodecArgs(codec)
+    let vargs = withEncodeThreads(videoCodecArgs(codec), threads)
     let webm = audioArgsFor(vargs)[1] == "libopus"
     let ui = "ui-" & codec & (if webm: ".webm" else: ".mp4")
     var args = @[resolveFfmpegBinary(), "-y", "-hide_banner", "-loglevel", "error", "-i", base]
@@ -702,7 +716,8 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
     rasteriseCast(timed, base, opts, endMs / 1000 + 0.5)
   else:
     toMp4(media, base, endMs / 1000 + 0.5,
-          retime = clock.retimeExpression, removedMs = clock.removedMs)
+          retime = clock.retimeExpression, removedMs = clock.removedMs,
+          threads = encodeThreadsOf(opts))
   # callouts, at their target's geometry when the run noted it
   let (bw, bh) = videoSize(base)
   # the canvas is the recording's own size unless asked otherwise: a UI
@@ -761,7 +776,9 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
       copyFile(track, opts.narrationOut)
   # 6. composition: the screencast with its captions and callouts, then the
   # presenter, encoded once (every input before the last step is lossless)
-  let finalArgs = (if opts.videoArgs.len > 0: opts.videoArgs else: UiVideoArgs)
+  let threads = encodeThreadsOf(opts)
+  let finalArgs = withEncodeThreads(
+    (if opts.videoArgs.len > 0: opts.videoArgs else: UiVideoArgs), threads)
   if opts.avatarVideo != "" and avatar.len == 0:
     # a presenter with no keyframes of the scenario's: the whole video, in a
     # circle at the bottom right
@@ -778,7 +795,8 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
   composeOpts.canvasWidth = cw
   composeOpts.canvasHeight = ch
   let presenter = opts.avatarVideo != "" and avatar.len > 0
-  composeOpts.videoArgs = (if presenter: LosslessVideoArgs else: finalArgs)
+  composeOpts.videoArgs =
+    (if presenter: withEncodeThreads(LosslessVideoArgs, threads) else: finalArgs)
   let silent = work / "silent.mp4"
   composeSilentVideo(base, silent, captions, composeOpts)
   var picture = silent
@@ -799,7 +817,7 @@ proc renderScenario*(doc: ScenarioDoc; flavour: Flavour; opts: RenderOptions): R
   if opts.htmlDir != "":
     writeBrowserComposite(opts.htmlDir, base, track, opts.avatarVideo, avatar, captions, cw, ch,
                           (if opts.pageCodecs.len > 0: opts.pageCodecs else: DefaultPageCodecs),
-                          result.flavour)
+                          result.flavour, threads = encodeThreadsOf(opts))
   result.ok = true
   result.video = opts.outPath
 

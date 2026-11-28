@@ -7,7 +7,7 @@
 ## the presenter its own video, captions WebVTT, callouts HTML. Real ffmpeg
 ## and ffprobe on synthetic media; no mocks.
 
-import std/[json, options, os, osproc, strutils, unittest]
+import std/[json, options, os, osproc, sequtils, strutils, unittest]
 import ../src/demo_video_studio/[media, avatar_track, render]
 
 proc tool(name: string): string =
@@ -53,6 +53,43 @@ suite "the final encode":
     let argv = buildSilentComposeArgv("in.mp4", "out.mp4", @[], o)
     let i = argv.find("-pix_fmt")
     check i > 0 and argv[i + 1] == "yuv420p"
+
+  test "every encode is bounded to the encode threads, in its encoder's own option":
+    proc after(a: seq[string]; key: string): string =
+      let i = a.find(key)
+      if i >= 0 and i + 1 < a.len: a[i + 1] else: ""
+    for name in VideoCodecNames:
+      let a = withEncodeThreads(videoCodecArgs(name), 3)
+      case after(a, "-c:v")
+      of "libx265":
+        check "pools=3" in after(a, "-x265-params").split(':')
+        check "keyint=60" in after(a, "-x265-params").split(':')
+      of "libsvtav1":
+        check "lp=3" in after(a, "-svtav1-params").split(':')
+        check "scm=1" in after(a, "-svtav1-params").split(':')
+      of "libvpx-vp9", "libaom-av1":
+        check after(a, "-threads") == "3"
+        check after(a, "-row-mt") == "1"
+      else:
+        check after(a, "-threads") == "3"
+    # applied twice, the option is replaced, not repeated
+    let twice = withEncodeThreads(withEncodeThreads(videoCodecArgs("av1-444"), 8), 2)
+    check twice.count("-threads") == 1 and after(twice, "-threads") == "2"
+    check twice.count("-row-mt") == 1
+    let hevc = withEncodeThreads(withEncodeThreads(videoCodecArgs("hevc"), 8), 2)
+    check after(hevc, "-x265-params").split(':').filterIt(it.startsWith("pools=")) == @["pools=2"]
+    # zero or less: the encoder's own default, the arguments untouched
+    check withEncodeThreads(videoCodecArgs("vp9-444"), 0) == videoCodecArgs("vp9-444")
+
+  test "a render's encode threads default to DefaultEncodeThreads, and auto is unbounded":
+    var o = RenderOptions()
+    check encodeThreadsOf(o) == DefaultEncodeThreads
+    check DefaultEncodeThreads == 4
+    o.encodeThreads = 6
+    check encodeThreadsOf(o) == 6
+    o.encodeThreads = -1
+    check encodeThreadsOf(o) == 0
+    check withEncodeThreads(LosslessVideoArgs, encodeThreadsOf(RenderOptions())).find("-threads") > 0
 
   test "the intermediate is lossless RGB":
     check "libx264rgb" in LosslessVideoArgs
