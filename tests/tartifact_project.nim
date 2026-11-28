@@ -154,6 +154,20 @@ suite "artifact_project staleness":
     finally:
       removeDir(projectDir(scriptPath).parentDir)
 
+  test "an empty stage output -> ssMissing, even when its hash matches":
+    ## A stage killed while writing leaves an empty file behind; counting it
+    ## as present would skip the stage on the next render.
+    let scriptPath = mkTempScriptPath("empty")
+    try:
+      createDir(projectDir(scriptPath))
+      let p = stagePath(scriptPath, rsLocalAudio)
+      writeFile(p, "")
+      var m = emptyManifest()
+      m.updateStage(scriptPath, rsLocalAudio, "h1")
+      check stageStatus(m, scriptPath, rsLocalAudio, "h1") == ssMissing
+    finally:
+      removeDir(projectDir(scriptPath).parentDir)
+
   test "matching hash -> ssFresh, mismatching -> ssStale":
     let scriptPath = mkTempScriptPath("fresh")
     try:

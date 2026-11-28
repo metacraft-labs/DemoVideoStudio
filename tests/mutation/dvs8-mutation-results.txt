@@ -1,21 +1,21 @@
-# dvs8 mutation results — 2026-10-28 20:20:18 +0200
+# dvs8 mutation results — 2026-11-28 11:19:39 +0200
 # kill command: just test
 
-KILLED   S1      240.9s  a staleness rule inverted
-           | ../dvs-studio/tests/tartifact_project.nim(7, 42) Warning: imported and not used: 'tables' [UnusedImport]
+KILLED   S1      643.2s  a staleness rule inverted
+           | ../DemoVideoStudio/tests/tartifact_project.nim(7, 42) Warning: imported and not used: 'tables' [UnusedImport]
            | Error: execution of an external program failed: '$BUILD_DIR/test-bin/tartifact_project'
-           | error: Recipe `test` failed on line 23 with exit code 1
-KILLED   S2      185.0s  an empty stage output counted as present
-           | /nix/store/fs8nqcqbz72ljxfhppqnr5g742s9w84n-nim-unwrapped-2.2.4/nim/lib/pure/asyncmacro.nim(49, 5) Warning: catch a more precise Exception deriving from Catchab
-           | Error: execution of an external program failed: '$BUILD_DIR/test-bin/teditor'
-           | error: Recipe `test` failed on line 23 with exit code 1
-KILLED   M1       45.1s  a filter graph dropping the overlay
-           | ../dvs-studio/src/demo_video_studio/avatar_track.nim(17, 19) Warning: imported and not used: 'options' [UnusedImport]
+           | error: Recipe `test` failed on line 37 with exit code 1
+KILLED   S2      304.7s  an empty stage output counted as present
+           | /nix/store/1g79vq82nyl5x79mmf36v8mf5ywxwi81-nim-unwrapped-2.2.4/nim/lib/pure/asyncmacro.nim(49, 5) Warning: catch a more precise Exception deriving from Catchab
+           | Error: execution of an external program failed: '$BUILD_DIR/test-bin/tscenario_ui'
+           | error: Recipe `test` failed on line 37 with exit code 1
+KILLED   M1      312.3s  a filter graph dropping the overlay
+           | ../DemoVideoStudio/src/demo_video_studio/avatar_track.nim(17, 19) Warning: imported and not used: 'options' [UnusedImport]
            | Error: execution of an external program failed: '$BUILD_DIR/test-bin/tmedia'
-           | error: Recipe `test` failed on line 23 with exit code 1
-KILLED   M2       83.2s  a filter graph dropping the captions
-           | ../dvs-studio/src/demo_video_studio/avatar_track.nim(17, 19) Warning: imported and not used: 'options' [UnusedImport]
+           | error: Recipe `test` failed on line 37 with exit code 1
+KILLED   M2      316.9s  a filter graph dropping the captions
+           | ../DemoVideoStudio/src/demo_video_studio/avatar_track.nim(17, 19) Warning: imported and not used: 'options' [UnusedImport]
            | Error: execution of an external program failed: '$BUILD_DIR/test-bin/tmedia'
-           | error: Recipe `test` failed on line 23 with exit code 1
+           | error: Recipe `test` failed on line 37 with exit code 1
 
 4/4 killed, 0 survived

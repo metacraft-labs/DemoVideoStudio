@@ -1,0 +1,17 @@
+# encode-threads mutation results — 2026-11-28 07:42:39 +0200
+# kill command: bash -c nim c -r --hints:off --warnings:off --passC:-w --threads:on --nimcache:$BUILD_DIR/nc -o:$BUILD_DIR/tbrowser_composite tests/tbrowser_composite.nim
+
+KILLED   E1       46.2s  withEncodeThreads returns the arguments unchanged: no encode is bounded
+           | [Suite] a browser composite, played
+           |   [OK] in Chromium the presenter follows the screencast and the callouts show
+           | Error: execution of an external program failed: '$BUILD_DIR/tbrowser_composite'
+KILLED   E2       27.6s  a render with no --encode-threads runs its encoders unbounded
+           | [Suite] a browser composite, played
+           |   [OK] in Chromium the presenter follows the screencast and the callouts show
+           | Error: execution of an external program failed: '$BUILD_DIR/tbrowser_composite'
+KILLED   E3       41.0s  an option already present is repeated instead of replaced
+           | [Suite] a browser composite, played
+           |   [OK] in Chromium the presenter follows the screencast and the callouts show
+           | Error: execution of an external program failed: '$BUILD_DIR/tbrowser_composite'
+
+3/3 killed, 0 survived
